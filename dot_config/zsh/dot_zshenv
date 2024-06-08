@@ -1,0 +1,14 @@
+#!/bin/zsh
+# Path: $ZDOTDIR/.zshenv
+# ZSH env file, loads after the .zshenv file in the home directory
+
+### if it isn't set yet, set the ZDOTDIR to the same thing as the ~ .zshenv file
+export ZDOTDIR=${ZDOTDIR:-$HOME/.config/zsh}
+
+### XDG (default directory locations), if they aren't set yet
+export XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME/.config}
+export XDG_CACHE_HOME=${XDG_CACHE_HOME:-$HOME/.cache}
+export XDG_DATA_HOME=${XDG_DATA_HOME:-$HOME/.local/share}
+export XDG_STATE_HOME=${XDG_STATE_HOME:-$HOME/.local/state}
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-$HOME/.xdg}
+export XDG_PROJECTS_DIR=${XDG_PROJECTS_DIR:-$HOME/git}
