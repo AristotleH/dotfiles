@@ -1,6 +1,6 @@
-.DS_Store
-~/.config/zsh/.zsh_sessions
+dot_DS_Store
+~/dot_config/zsh/.zsh_sessions
 {{- if eq .chezmoi.hostname "work-macbook" }}
-~/.config/zsh/config/asdf.zsh
-~/.config/zsh/config/cloud_sdks.zsh
+~/dot_config/zsh/config/asdf.zsh
+~/dot_config/zsh/config/cloud_sdks.zsh
 {{- end }}
