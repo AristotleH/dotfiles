@@ -1,13 +1,21 @@
 fpath+=( /Users/aristotle/.cache/repos/ohmyzsh/ohmyzsh/plugins/extract )
 source /Users/aristotle/.cache/repos/ohmyzsh/ohmyzsh/plugins/extract/extract.plugin.zsh
+fpath+=( /Users/aristotle/.cache/repos/ohmyzsh/ohmyzsh/plugins/eza )
+source /Users/aristotle/.cache/repos/ohmyzsh/ohmyzsh/plugins/eza/eza.plugin.zsh
+fpath+=( /Users/aristotle/.cache/repos/ohmyzsh/ohmyzsh/plugins/colored-man-pages )
+source /Users/aristotle/.cache/repos/ohmyzsh/ohmyzsh/plugins/colored-man-pages/colored-man-pages.plugin.zsh
+fpath+=( /Users/aristotle/.cache/repos/ohmyzsh/ohmyzsh/plugins/colorize )
+source /Users/aristotle/.cache/repos/ohmyzsh/ohmyzsh/plugins/colorize/colorize.plugin.zsh
 fpath+=( /Users/aristotle/.cache/repos/ohmyzsh/ohmyzsh/plugins/magic-enter )
 source /Users/aristotle/.cache/repos/ohmyzsh/ohmyzsh/plugins/magic-enter/magic-enter.plugin.zsh
-fpath+=( /Users/aristotle/.cache/repos/ohmyzsh/ohmyzsh/plugins/fancy-ctrl-z )
-source /Users/aristotle/.cache/repos/ohmyzsh/ohmyzsh/plugins/fancy-ctrl-z/fancy-ctrl-z.plugin.zsh
 if is-macos; then
   fpath+=( /Users/aristotle/.cache/repos/ohmyzsh/ohmyzsh/plugins/iterm2 )
   source /Users/aristotle/.cache/repos/ohmyzsh/ohmyzsh/plugins/iterm2/iterm2.plugin.zsh
 fi
+fpath+=( /Users/aristotle/.cache/repos/ohmyzsh/ohmyzsh/plugins/jira )
+source /Users/aristotle/.cache/repos/ohmyzsh/ohmyzsh/plugins/jira/jira.plugin.zsh
+fpath+=( /Users/aristotle/.cache/repos/ohmyzsh/ohmyzsh/plugins/git-extras )
+source /Users/aristotle/.cache/repos/ohmyzsh/ohmyzsh/plugins/git-extras/git-extras.plugin.zsh
 if is-macos; then
   fpath+=( /Users/aristotle/.cache/repos/zshzoo/macos )
   source /Users/aristotle/.cache/repos/zshzoo/macos/macos.plugin.zsh

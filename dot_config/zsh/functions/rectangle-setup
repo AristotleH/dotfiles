@@ -1,4 +1,4 @@
-defaults write com.knollsoft.Rectangle snapEdgeMarginTop -int 10;
-defaults write com.knollsoft.Rectangle snapEdgeMarginBottom -int 10;
-defaults write com.knollsoft.Rectangle snapEdgeMarginLeft -int 10;
-defaults write com.knollsoft.Rectangle snapEdgeMarginRight -int 10;
+defaults write com.knollsoft.Hookshot snapEdgeMarginTop -int 10;
+defaults write com.knollsoft.Hookshot snapEdgeMarginBottom -int 10;
+defaults write com.knollsoft.Hookshot snapEdgeMarginLeft -int 10;
+defaults write com.knollsoft.Hookshot snapEdgeMarginRight -int 10;

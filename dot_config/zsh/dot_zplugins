@@ -2,23 +2,24 @@
 # Path: $ZDOTDIR/.zplugins
 # Antidote plugins file
 
-# Utils
+# the ohmyzsh block
 ohmyzsh/ohmyzsh path:plugins/extract
-
-# Editor
+ohmyzsh/ohmyzsh path:plugins/eza
+ohmyzsh/ohmyzsh path:plugins/colored-man-pages
+ohmyzsh/ohmyzsh path:plugins/colorize
 ohmyzsh/ohmyzsh path:plugins/magic-enter
-ohmyzsh/ohmyzsh path:plugins/fancy-ctrl-z
-
-# macOS
+# ohmyzsh/ohmyzsh path:plugins/fancy-ctrl-z
 ohmyzsh/ohmyzsh path:plugins/iterm2 conditional:is-macos
+# ohmyzsh/ohmyzsh path:plugins/tmux
+ohmyzsh/ohmyzsh path:plugins/jira
+ohmyzsh/ohmyzsh path:plugins/git-extras
+
+# macos
 zshzoo/macos conditional:is-macos
 
 # Prompt
 sindresorhus/pure kind:fpath
 romkatv/powerlevel10k kind:fpath
-
-# tmux
-# ohmyzsh/ohmyzsh path:plugins/tmux
 
 # fzf
 mattmc3/zman
@@ -30,6 +31,6 @@ zsh-users/zsh-syntax-highlighting
 zsh-users/zsh-autosuggestions
 zsh-users/zsh-history-substring-search
 
-# other
+# git
 wfxr/forgit
 # unixorn/git-extra-commands
