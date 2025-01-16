@@ -1,0 +1,64 @@
+#!/bin/zsh
+
+function install_brew() {
+    command -v brew &>/dev/null && return 0
+    /bin/bash -c $(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)
+}
+
+function install_brew_packages() {
+    {{ if eq .chezmoi.os "darwin" }}
+    brew bundle --no-upgrade --no-lock --file=~/.Brewfile_darwin
+    {{ else if eq .chezmoi.os "linux" }}
+    brew bundle --no-upgrade --no-lock --file=~/.Brewfile_linux
+    {{ end }}
+}
+
+function install_linux_packages() {
+    local packages=${1:-""}
+    
+    packages+=(
+        build-essential
+        curl
+        file
+        git
+        jc
+        man
+        rsync
+        ssh
+        tmux
+        unzip
+        wget
+        zip
+    )
+    
+    sudo apt-get update -qq
+    sudo apt-get install --no-upgrade -y ${packages[@]}
+    sudo apt-get autoremove -y
+    sudo apt-get autoclean
+}
+
+function main() {
+    {{ if .packages.runInstalls }}
+    # Darwin
+    {{     if eq .chezmoi.os "darwin" }}
+    xcode-select --install
+    install_brew
+    eval $(/opt/homebrew/bin/brew shellenv)
+    
+    # Linux, including WSL
+    {{     else if eq .chezmoi.os "linux" }}
+    # # WSL only
+    # {{       if (.chezmoi.kernel.osrelease | lower | contains "microsoft") }}
+    # # Linux only
+    # {{       else }}
+    # {{       end }}
+    install_linux_packages
+    install_brew
+    eval $(/home/linuxbrew/.linuxbrew/bin/brew shellenv)
+    {{     end }}
+
+    install_brew_packages
+    {{ end }}
+}
+
+main

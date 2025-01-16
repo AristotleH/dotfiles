@@ -1,0 +1,9 @@
+{{ $email := promptStringOnce . "git.email" "git email" }}
+{{ $name := promptStringOnce . "git.name" "git name" }}
+{{ $runInstalls := promptBoolOnce . "false" "Should I install stuff" }}
+
+[data.git]
+    email = {{ $email | quote }}
+    name = {{ $name | quote }}
+[data.packages]
+    runInstalls = {{ $runInstalls | quote }}

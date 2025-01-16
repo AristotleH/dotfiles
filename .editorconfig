@@ -1,0 +1,44 @@
+# EditorConfig helps developers define and maintain consistent
+# coding styles between different editors and IDEs.
+# See https://editorconfig.org for more information.
+
+# Top-most EditorConfig file
+root = true
+
+# Default settings (applicable to all files)
+[*]
+charset = utf-8            # File encoding
+end_of_line = lf           # Line endings (lf, crlf, or cr)
+indent_style = space       # Use spaces for indentation
+indent_size = 4            # Indentation size
+insert_final_newline = true # Ensure file ends with a newline
+trim_trailing_whitespace = true # Remove trailing whitespace
+
+# Specific rules for Markdown files
+[*.md]
+max_line_length = off       # Disable max line length for Markdown
+trim_trailing_whitespace = false # Allow trailing whitespace (for MD lists)
+
+# Specific rules for Python files
+[*.py]
+indent_size = 4
+
+# Specific rules for JSON files
+[*.json]
+indent_size = 2
+
+# Specific rules for YAML files
+[*.yml]
+indent_size = 2
+
+# Specific rules for Makefiles
+[Makefile]
+indent_style = tab         # Use tabs for Makefiles
+
+# Specific rules for JavaScript and TypeScript files
+[*.{js,ts}]
+indent_size = 2
+
+# Specific rules for HTML and CSS files
+[*.{html,css}]
+indent_size = 2

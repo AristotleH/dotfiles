@@ -1,6 +1,4 @@
 #!/bin/zsh
-# Path: config/fzf.zsh
-# fzf configuration
 
 # load fzf
 source <(fzf --zsh)
@@ -21,7 +19,7 @@ zstyle ':fzf-tab:*' switch-group '<' '>'
 # adjust size of the fzf tab popup window
 zstyle ':fzf-tab:complete:cd:*' popup-pad 30 0
 # bind up arrow key to history widget
-bindkey '^[[A' fzf-history-widget
+# bindkey '^[[A' fzf-history-widget
 # use the fzf tmux popup for fzf-tab
 zstyle ':fzf-tab:*' fzf-command ftb-tmux-popup
 

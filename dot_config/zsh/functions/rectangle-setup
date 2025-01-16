@@ -1,4 +1,0 @@
-defaults write com.knollsoft.Hookshot snapEdgeMarginTop -int 10;
-defaults write com.knollsoft.Hookshot snapEdgeMarginBottom -int 10;
-defaults write com.knollsoft.Hookshot snapEdgeMarginLeft -int 10;
-defaults write com.knollsoft.Hookshot snapEdgeMarginRight -int 10;

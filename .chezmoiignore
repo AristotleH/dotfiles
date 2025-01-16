@@ -1,6 +1,0 @@
-dot_DS_Store
-~/dot_config/zsh/dot_zsh_sessions
-{{- if eq .chezmoi.hostname "work-macbook" }}
-~/dot_config/zsh/config/asdf.zsh
-~/dot_config/zsh/config/cloud_sdks.zsh
-{{- end }}
