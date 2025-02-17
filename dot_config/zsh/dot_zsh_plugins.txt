@@ -5,21 +5,10 @@ mattmc3/ez-compinit
 zsh-users/zsh-completions kind:fpath path:src
 aloxaf/fzf-tab  # Remove if you don't use fzf
 
-# Completion styles
-belak/zsh-utils path:completion/functions kind:autoload post:compstyle_zshzoo_setup
-
-# Keybindings
-belak/zsh-utils path:editor
-
-# History
-belak/zsh-utils path:history
-
 # Prompt
 romkatv/powerlevel10k
 
 # Utilities
-zshzoo/macos conditional:is-darwin
-belak/zsh-utils path:utility
 romkatv/zsh-bench kind:path
 
 # Other oh-my-zsh plugins
@@ -30,4 +19,3 @@ ohmyzsh/ohmyzsh path:plugins/eza
 # Other Fish-like features
 zdharma-continuum/fast-syntax-highlighting  # Syntax highlighting
 zsh-users/zsh-autosuggestions               # Auto-suggestions
-zsh-users/zsh-history-substring-search      # Up/Down to search history
