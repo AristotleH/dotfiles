@@ -7,9 +7,9 @@ function install_brew() {
 
 function install_brew_packages() {
     {{ if eq .chezmoi.os "darwin" }}
-    brew bundle --no-upgrade --no-lock --file=~/.Brewfile_darwin
+    brew bundle --no-upgrade --file=~/.Brewfile_darwin
     {{ else if eq .chezmoi.os "linux" }}
-    brew bundle --no-upgrade --no-lock --file=~/.Brewfile_linux
+    brew bundle --no-upgrade --file=~/.Brewfile_linux
     {{ end }}
 }
 
@@ -58,9 +58,10 @@ function main() {
     {{     end }}
 
     install_brew_packages
-    {{ end }}
 
     fish -c "fisher update"
+    fish -c "tide configure --auto --style=Lean --prompt_colors='True color' --show_time='24-hour format' --lean_prompt_height='One line' --prompt_spacing=Compact --icons='Few icons' --transient=Yes"
+    {{ end }}
 }
 
 main
