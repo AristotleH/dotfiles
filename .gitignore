@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Chezmoi
+# Don't ignore generated files - they should be committed
+# but ignore chezmoi's work directory if present
+.chezmoi/
+
+# Local testing
+test-output/
+*.log

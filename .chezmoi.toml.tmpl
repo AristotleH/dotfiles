@@ -1,9 +1,25 @@
 {{ $email := promptStringOnce . "git.email" "git email" }}
 {{ $name := promptStringOnce . "git.name" "git name" }}
-{{ $runInstalls := promptBoolOnce . "false" "Should I install stuff" }}
+{{ $runInstalls := promptBoolOnce . "packages.runInstalls" "Should I install packages automatically" }}
 
 [data.git]
     email = {{ $email | quote }}
     name = {{ $name | quote }}
+
 [data.packages]
-    runInstalls = {{ $runInstalls | quote }}
+    runInstalls = {{ $runInstalls }}
+
+# Platform detection
+[data.platform]
+    os = {{ .chezmoi.os | quote }}
+    arch = {{ .chezmoi.arch | quote }}
+    {{- if eq .chezmoi.os "darwin" }}
+    type = "macos"
+    {{- else if eq .chezmoi.os "windows" }}
+    type = "windows"
+    {{- else if eq .chezmoi.os "linux" }}
+    # Will be refined by distribution
+    type = "linux"
+    {{- else }}
+    type = "unknown"
+    {{- end }}

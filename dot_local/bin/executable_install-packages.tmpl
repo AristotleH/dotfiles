@@ -1,0 +1,216 @@
+#!/bin/bash
+# Cross-platform package installer
+# Automatically detects platform and installs packages
+
+set -e
+
+detect_platform() {
+{{- if eq .chezmoi.os "darwin" }}
+    echo "macos"
+{{- else if eq .chezmoi.os "windows" }}
+    if [ -n "$MSYSTEM" ]; then
+        echo "msys2"
+    else
+        echo "windows"
+    fi
+{{- else if eq .chezmoi.os "linux" }}
+    # Detect Linux distribution
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        case "$ID" in
+            raspbian|raspios)
+                echo "raspi"
+                ;;
+            debian|ubuntu|pop|mint)
+                echo "apt"
+                ;;
+            arch|manjaro|endeavouros)
+                echo "pacman"
+                ;;
+            fedora|rhel|centos|rocky|alma)
+                echo "dnf"
+                ;;
+            *)
+                # Try to detect package manager
+                if command -v apt-get &> /dev/null; then
+                    echo "apt"
+                elif command -v pacman &> /dev/null; then
+                    echo "pacman"
+                elif command -v dnf &> /dev/null; then
+                    echo "dnf"
+                else
+                    echo "unknown"
+                fi
+                ;;
+        esac
+    else
+        echo "unknown"
+    fi
+{{- else }}
+    echo "unknown"
+{{- end }}
+}
+
+install_macos() {
+    echo "Installing packages for macOS..."
+
+    # Check if Homebrew is installed
+    if ! command -v brew &> /dev/null; then
+        echo "Homebrew not found. Installing Homebrew..."
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    fi
+
+    # Check if mas is installed (for Mac App Store apps)
+    if ! command -v mas &> /dev/null; then
+        echo "Installing mas-cli for Mac App Store apps..."
+        brew install mas
+    fi
+
+    # Install packages from Brewfile
+    if [ -f "$HOME/.Brewfile" ]; then
+        echo "Installing from Brewfile..."
+        brew bundle --file="$HOME/.Brewfile" --no-lock
+    else
+        echo "Warning: Brewfile not found at $HOME/.Brewfile"
+        echo "Run 'chezmoi apply' first to generate package files"
+        exit 1
+    fi
+
+    echo "✅ macOS package installation complete!"
+}
+
+install_msys2() {
+    echo "Installing packages for MSYS2..."
+
+    if [ -z "$MSYSTEM" ]; then
+        echo "Error: This must be run in an MSYS2 shell"
+        exit 1
+    fi
+
+    local pkg_file="$HOME/.config/packages-msys2.txt"
+    if [ -f "$pkg_file" ]; then
+        packages=$(grep -v '^#' "$pkg_file" | grep -v '^$' | tr '\n' ' ')
+        if [ -n "$packages" ]; then
+            echo "Installing packages: $packages"
+            # shellcheck disable=SC2086
+            pacman -S --needed --noconfirm $packages
+        else
+            echo "No packages to install"
+        fi
+    else
+        echo "Warning: Package list not found at $pkg_file"
+        echo "Run 'chezmoi apply' first to generate package files"
+        exit 1
+    fi
+
+    echo "✅ MSYS2 package installation complete!"
+}
+
+install_apt() {
+    echo "Installing packages for APT-based system..."
+
+    local pkg_file="$HOME/.config/packages-$1.txt"
+    if [ -f "$pkg_file" ]; then
+        echo "Updating package list..."
+        sudo apt-get update
+
+        packages=$(grep -v '^#' "$pkg_file" | grep -v '^$' | tr '\n' ' ')
+        if [ -n "$packages" ]; then
+            echo "Installing packages: $packages"
+            # shellcheck disable=SC2086
+            sudo apt-get install -y $packages
+        else
+            echo "No packages to install"
+        fi
+    else
+        echo "Warning: Package list not found at $pkg_file"
+        echo "Run 'chezmoi apply' first to generate package files"
+        exit 1
+    fi
+
+    echo "✅ APT package installation complete!"
+}
+
+install_pacman() {
+    echo "Installing packages for Pacman-based system..."
+
+    local pkg_file="$HOME/.config/packages-pacman.txt"
+    if [ -f "$pkg_file" ]; then
+        echo "Updating package database..."
+        sudo pacman -Sy
+
+        packages=$(grep -v '^#' "$pkg_file" | grep -v '^$' | tr '\n' ' ')
+        if [ -n "$packages" ]; then
+            echo "Installing packages: $packages"
+            # shellcheck disable=SC2086
+            sudo pacman -S --needed --noconfirm $packages
+        else
+            echo "No packages to install"
+        fi
+    else
+        echo "Warning: Package list not found at $pkg_file"
+        echo "Run 'chezmoi apply' first to generate package files"
+        exit 1
+    fi
+
+    echo "✅ Pacman package installation complete!"
+}
+
+install_dnf() {
+    echo "Installing packages for DNF-based system..."
+
+    local pkg_file="$HOME/.config/packages-dnf.txt"
+    if [ -f "$pkg_file" ]; then
+        packages=$(grep -v '^#' "$pkg_file" | grep -v '^$' | tr '\n' ' ')
+        if [ -n "$packages" ]; then
+            echo "Installing packages: $packages"
+            # shellcheck disable=SC2086
+            sudo dnf install -y $packages
+        else
+            echo "No packages to install"
+        fi
+    else
+        echo "Warning: Package list not found at $pkg_file"
+        echo "Run 'chezmoi apply' first to generate package files"
+        exit 1
+    fi
+
+    echo "✅ DNF package installation complete!"
+}
+
+main() {
+    platform=$(detect_platform)
+    echo "Detected platform: $platform"
+
+    case "$platform" in
+        macos)
+            install_macos
+            ;;
+        msys2)
+            install_msys2
+            ;;
+        raspi)
+            install_apt "raspi"
+            ;;
+        apt)
+            install_apt "apt"
+            ;;
+        pacman)
+            install_pacman
+            ;;
+        dnf)
+            install_dnf
+            ;;
+        unknown)
+            echo "Error: Unable to detect platform or package manager"
+            echo "Supported platforms: macOS (Homebrew), MSYS2, APT, Pacman, DNF"
+            exit 1
+            ;;
+        *)
+            echo "Error: Unsupported platform: $platform"
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"

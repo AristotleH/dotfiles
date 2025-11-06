@@ -1,0 +1,25 @@
+# Ubuntu test environment for chezmoi dotfiles
+FROM ubuntu:latest
+
+# Install basic dependencies including fish and zsh (needed for chezmoi to validate scripts)
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    ca-certificates \
+    fish \
+    zsh \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install chezmoi
+RUN sh -c "$(curl -fsLS get.chezmoi.io)" -- -b /usr/local/bin
+
+# Create a test user
+RUN useradd -m -s /bin/bash testuser
+USER testuser
+WORKDIR /home/testuser
+
+# Set up git config (required for chezmoi)
+RUN git config --global user.email "test@example.com" && \
+    git config --global user.name "Test User"
+
+CMD ["/bin/bash"]

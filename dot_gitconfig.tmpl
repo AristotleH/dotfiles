@@ -3,3 +3,76 @@
 	name = {{ .git.name }}
 [core]
 	pager = delta
+	editor = nvim
+	autocrlf = input
+	fsmonitor = true
+	untrackedCache = true
+[commit]
+	verbose = true
+[push]
+	default = simple
+	autoSetupRemote = true
+[fetch]
+	prune = true
+	tags = false
+[pull]
+	rebase = true
+[feature]
+	manyFiles = true
+[merge]
+	squash = true
+	ff = false
+	conflictStyle = zdiff3
+[interactive]
+	diffFilter = delta --color-only
+[diff]
+	colorMoved = plain
+	algorithm = histogram
+	mnemonicPrefix = true
+	renames = true
+[remote]
+	tagOptions = --no-tags
+[log]
+	date = iso
+[help]
+	autocorrect = prompt
+[rebase]
+	autostash = true
+	autosquash = true
+	updateRefs = true
+[advice]
+	detachedHead = false
+[maintenance]
+	auto = false
+	strategy = incremental
+
+[alias]
+    a = add
+	aa = add --all
+	amend = commit --amend --no-edit
+	c = commit
+	ca = commit --all
+	cm = commit -m
+	adcom = !git add -A && git commit -m
+	adame = !git add -A && git amend
+	back = reset HEAD~1
+	b = branch
+	sw = switch
+	swpr = !gh pr checkout
+	swm = switch main
+	d = diff
+	l = log --oneline --graph --decorate
+	stashall = stash -u
+	pop = stash pop
+	apply = stash apply
+	s = status
+	suno = status -uno
+	unstage = reset HEAD --
+	hash = rev-parse HEAD
+	branchname = rev-parse --abbrev-ref HEAD
+
+# Include external/local gitconfig if it exists (for machine-specific settings)
+# This file is NOT managed by chezmoi - keep private/local settings here
+[include]
+	path = ~/.gitconfig.local
+

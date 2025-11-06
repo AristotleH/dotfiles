@@ -1,0 +1,52 @@
+# Example GitHub Actions workflow to test package generation
+# Copy to .github/workflows/test-packages.yml to enable
+
+name: Test Package Generation
+
+on:
+  push:
+    paths:
+      - 'packages.yaml'
+      - 'generate-packages.py'
+  pull_request:
+    paths:
+      - 'packages.yaml'
+      - 'generate-packages.py'
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Generate package lists
+        run: ./generate-packages.py
+
+      - name: Check for uncommitted changes
+        run: |
+          if ! git diff --exit-code; then
+            echo "Error: Generated files are out of sync with packages.yaml"
+            echo "Please run './generate-packages.py' and commit the changes"
+            exit 1
+          fi
+
+      - name: Validate Brewfile syntax
+        if: runner.os == 'macOS'
+        run: brew bundle check --file=dot_Brewfile_darwin || true
+
+  test-macos:
+    runs-on: macos-latest
+    needs: generate
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test Brewfile
+        run: brew bundle check --file=dot_Brewfile_darwin --verbose || true

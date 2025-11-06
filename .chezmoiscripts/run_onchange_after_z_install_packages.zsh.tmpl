@@ -2,65 +2,102 @@
 
 function install_brew() {
     command -v brew &>/dev/null && return 0
-    /bin/bash -c $(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)
+    echo "Installing Homebrew..."
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 }
 
 function install_brew_packages() {
     {{ if eq .chezmoi.os "darwin" }}
-    brew bundle --no-upgrade --file=~/.Brewfile_darwin
-    {{ else if eq .chezmoi.os "linux" }}
-    brew bundle --no-upgrade --file=~/.Brewfile_linux
+    if [ -f ~/.config/Brewfile_darwin ]; then
+        echo "Installing packages from Brewfile..."
+        brew bundle --no-upgrade --file=~/.config/Brewfile_darwin
+    fi
     {{ end }}
 }
 
 function install_linux_packages() {
-    local packages=${1:-""}
-    
-    packages+=(
-        build-essential
-        curl
-        file
-        git
-        jc
-        man
-        rsync
-        ssh
-        tmux
-        unzip
-        wget
-        zip
-    )
-    
-    sudo apt-get update -qq
-    sudo apt-get install --no-upgrade -y ${packages[@]}
-    sudo apt-get autoremove -y
-    sudo apt-get autoclean
+    {{ if eq .chezmoi.os "linux" }}
+    # Detect package manager and use generated package list
+    if command -v apt-get &>/dev/null; then
+        # Debian/Ubuntu/Raspberry Pi
+        if [ -f ~/.config/packages-apt.txt ]; then
+            echo "Installing APT packages..."
+            local packages=($(grep -v '^#' ~/.config/packages-apt.txt | grep -v '^$'))
+            sudo apt-get update -qq
+            sudo apt-get install --no-upgrade -y ${packages[@]}
+            sudo apt-get autoremove -y
+            sudo apt-get autoclean
+        fi
+    elif command -v pacman &>/dev/null; then
+        # Arch Linux
+        if [ -f ~/.config/packages-pacman.txt ]; then
+            echo "Installing Pacman packages..."
+            local packages=($(grep -v '^#' ~/.config/packages-pacman.txt | grep -v '^$'))
+            sudo pacman -S --needed --noconfirm ${packages[@]}
+        fi
+    elif command -v dnf &>/dev/null; then
+        # Fedora/RHEL
+        if [ -f ~/.config/packages-dnf.txt ]; then
+            echo "Installing DNF packages..."
+            local packages=($(grep -v '^#' ~/.config/packages-dnf.txt | grep -v '^$'))
+            sudo dnf install -y ${packages[@]}
+        fi
+    elif command -v pacman &>/dev/null && [ -f /mingw64/bin/pacman ]; then
+        # MSYS2 (Windows)
+        if [ -f ~/.config/packages-msys2.txt ]; then
+            echo "Installing MSYS2 packages..."
+            local packages=($(grep -v '^#' ~/.config/packages-msys2.txt | grep -v '^$'))
+            pacman -S --needed --noconfirm ${packages[@]}
+        fi
+    fi
+    {{ end }}
+}
+
+function setup_fish() {
+    # Only configure fish if it's installed
+    if command -v fish &>/dev/null; then
+        echo "Setting up fish shell..."
+        fish -c "fisher update" 2>/dev/null || true
+        fish -c "tide configure --auto --style=Lean --prompt_colors='16 colors' --show_time=No --lean_prompt_height='One line' --prompt_spacing=Compact --icons='Few icons' --transient=Yes" 2>/dev/null || true
+    fi
 }
 
 function main() {
     {{ if .packages.runInstalls }}
-    # Darwin
-    {{     if eq .chezmoi.os "darwin" }}
-    xcode-select --install
-    install_brew
-    eval $(/opt/homebrew/bin/brew shellenv)
-    
-    # Linux, including WSL
-    {{     else if eq .chezmoi.os "linux" }}
-    # # WSL only
-    # {{       if (.chezmoi.kernel.osrelease | lower | contains "microsoft") }}
-    # # Linux only
-    # {{       else }}
-    # {{       end }}
-    install_linux_packages
-    install_brew
-    eval $(/home/linuxbrew/.linuxbrew/bin/brew shellenv)
-    {{     end }}
+    echo "🚀 Installing packages..."
 
+    # macOS
+    {{     if eq .chezmoi.os "darwin" }}
+    echo "📦 macOS detected - installing via Homebrew"
+
+    # Install Xcode Command Line Tools (silently fail if already installed)
+    xcode-select --install 2>/dev/null || true
+
+    # Install Homebrew if not present
+    install_brew
+
+    # Set up Homebrew environment
+    if [ -f /opt/homebrew/bin/brew ]; then
+        eval "$(/opt/homebrew/bin/brew shellenv)"
+    elif [ -f /usr/local/bin/brew ]; then
+        eval "$(/usr/local/bin/brew shellenv)"
+    fi
+
+    # Install packages from Brewfile
     install_brew_packages
 
-    fish -c "fisher update"
-    fish -c "tide configure --auto --style=Lean --prompt_colors='16 colors' --show_time=No --lean_prompt_height='One line' --prompt_spacing=Compact --icons='Few icons' --transient=Yes"
+    # Linux
+    {{     else if eq .chezmoi.os "linux" }}
+    echo "📦 Linux detected - installing via native package manager"
+    install_linux_packages
+    {{     end }}
+
+    # Set up fish shell configuration
+    setup_fish
+
+    echo "✅ Package installation complete!"
+    {{ else }}
+    echo "⏭️  Package auto-install disabled (set packages.runInstalls=true to enable)"
     {{ end }}
 }
 
