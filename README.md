@@ -8,7 +8,7 @@ Personal dotfiles managed with [chezmoi](https://www.chezmoi.io/).
 - **Unified package management**: Define packages once in YAML, install everywhere
 - **Dual shell support**: Fish (with Tide prompt) and Zsh (with Powerlevel10k)
 - **Modern CLI tools**: bat, eza, fd, fzf, ripgrep, zoxide, git-delta, and more
-- **Tmux integration**: Auto-attach, mouse support, OSC passthrough for modern terminals
+- **Tmux integration**: Mouse support, OSC passthrough for modern terminals
 
 ## Quick Start
 
@@ -174,7 +174,8 @@ Tmux configuration includes:
 - OSC passthrough for modern terminals (Ghostty, iTerm2, etc.)
 - 256-color and RGB support
 - 1-indexed windows and panes
-- Auto-attach on shell startup (optional, via `zsh/.zshrc.d/tmux.zsh`)
+
+To enable auto-attach on shell startup, set `TMUX_AUTO_ATTACH=1` in your environment (e.g., in `~/.config/zsh/.zshrc.local`).
 
 ### Platform-Specific Files
 

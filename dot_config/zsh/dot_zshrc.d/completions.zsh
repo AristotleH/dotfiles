@@ -25,7 +25,8 @@ zstyle ':fzf-tab:*' use-fzf-default-opts yes             # Use FZF_DEFAULT_OPTS
 # fzf-tab colors and bindings
 zstyle ':fzf-tab:*' fzf-flags \
     --color=fg:1,fg+:2 \
-    --bind=tab:accept
+    --bind=tab:accept \
+    --no-hscroll
 
 # Preview for files and directories
 zstyle ':fzf-tab:complete:cd:*' fzf-preview 'eza -1 --color=always $realpath'
