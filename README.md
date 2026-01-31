@@ -4,10 +4,11 @@ Personal dotfiles managed with [chezmoi](https://www.chezmoi.io/).
 
 ## Features
 
-- **Cross-platform**: Works on macOS, Linux (Debian/Ubuntu, Arch, Fedora), Raspberry Pi, and Windows (MSYS2)
+- **Cross-platform**: Works on macOS, Linux (Debian/Ubuntu, Arch, Fedora), and Windows (MSYS2)
 - **Unified package management**: Define packages once in YAML, install everywhere
-- **Fish shell** with Tide prompt
-- **Modern CLI tools**: bat, ripgrep, eza, fzf, git-delta, and more
+- **Dual shell support**: Fish (with Tide prompt) and Zsh (with Powerlevel10k)
+- **Modern CLI tools**: bat, eza, fd, fzf, ripgrep, zoxide, git-delta, and more
+- **Tmux integration**: Auto-attach, mouse support, OSC passthrough for modern terminals
 
 ## Quick Start
 
@@ -75,22 +76,26 @@ See [.pkgmgmt/PACKAGES.md](.pkgmgmt/PACKAGES.md) for complete documentation or [
 
 ```
 .
-├── .pkgmgmt/packages.yaml              # Central package manifest
-├── .pkgmgmt/generate_packages.py       # Package list generator
-├── search-package.py          # Helper to search package names
-├── dot_Brewfile_darwin        # Generated: macOS packages
+├── .pkgmgmt/                           # Package management system
+│   ├── packages.yaml                   # Central package manifest
+│   ├── generate_packages.py            # Package list generator
+│   └── test-environments/              # Container-based testing
 ├── dot_config/
-│   ├── fish/                  # Fish shell configuration
-│   ├── packages-*.txt.tmpl    # Generated: Platform package lists
-│   └── ...
+│   ├── fish/                           # Fish shell configuration
+│   │   ├── config.fish                 # Main config (sources conf.d/)
+│   │   ├── conf.d/                     # Modular config files
+│   │   └── functions/                  # Custom functions
+│   ├── zsh/                            # Zsh shell configuration
+│   │   ├── dot_zshrc                   # Main config (sources .zshrc.d/)
+│   │   ├── dot_zshenv                  # Environment variables
+│   │   ├── dot_zsh_plugins.txt         # Antidote plugin list
+│   │   ├── dot_zshrc.d/                # Modular config files
+│   │   └── dot_zfunctions/             # Custom functions
+│   ├── tmux/                           # Tmux configuration
+│   └── packages-*.txt.tmpl             # Generated: Platform package lists
 ├── dot_local/bin/
-│   └── install-packages.tmpl  # Universal package installer
-└── dot_gitconfig.tmpl         # Git configuration
-
-Documentation:
-├── README.md                  # This file
-├── .pkgmgmt/PACKAGES.md                # Complete package system documentation
-└── .pkgmgmt/PACKAGES-QUICKREF.md       # Quick reference guide
+│   └── install-packages.tmpl           # Universal package installer
+└── dot_gitconfig.tmpl                  # Git configuration
 ```
 
 ## Configuration
@@ -127,26 +132,49 @@ Example `~/.gitconfig.local`:
 The Fish shell configuration includes:
 
 - [Tide prompt](https://github.com/IlanCosman/tide) (v6)
-- Syntax highlighting
-- Modern CLI tool aliases (eza for ls, bat for cat)
+- Syntax highlighting (built-in)
+- Modern CLI tool aliases (eza, bat, etc.)
 - Custom functions in `~/.config/fish/functions/`
 
 #### External Fish Config
 
-You can add machine-specific or private fish settings in `~/.config/fish/config.local.fish`. This file is **not** managed by chezmoi and will be sourced automatically.
+Add machine-specific settings in `~/.config/fish/config.local.fish` (not managed by chezmoi).
 
-Example `~/.config/fish/config.local.fish`:
+### Zsh Shell
 
-```fish
-# Machine-specific environment variables
-set -x WORK_PROJECT_DIR ~/work/projects
+The Zsh shell configuration includes:
 
-# Private API keys (never commit these!)
-set -x ANTHROPIC_API_KEY "sk-..."
+- [Powerlevel10k](https://github.com/romkatv/powerlevel10k) prompt (run `p10k configure` to customize)
+- [Antidote](https://github.com/mattmc3/antidote) plugin manager
+- [fzf-tab](https://github.com/Aloxaf/fzf-tab) for fuzzy completion
+- Syntax highlighting and autosuggestions
+- Native git completions (full subcommand support)
+- Custom functions in `~/.config/zsh/.zfunctions/`
 
-# Machine-specific aliases
-alias work="cd $WORK_PROJECT_DIR"
-```
+#### Zsh Plugins
+
+Plugins are defined in `~/.config/zsh/.zsh_plugins.txt`:
+
+- `mattmc3/ez-compinit` - Lazy completion initialization
+- `zsh-users/zsh-completions` - Additional completions
+- `Aloxaf/fzf-tab` - Fuzzy tab completion with fzf
+- `romkatv/powerlevel10k` - Fast, customizable prompt
+- `zdharma-continuum/fast-syntax-highlighting` - Command highlighting
+- `zsh-users/zsh-autosuggestions` - Fish-like history suggestions
+
+#### External Zsh Config
+
+Add machine-specific settings in `~/.config/zsh/.zshrc.local` (not managed by chezmoi).
+
+### Tmux
+
+Tmux configuration includes:
+
+- Mouse support
+- OSC passthrough for modern terminals (Ghostty, iTerm2, etc.)
+- 256-color and RGB support
+- 1-indexed windows and panes
+- Auto-attach on shell startup (optional, via `zsh/.zshrc.d/tmux.zsh`)
 
 ### Platform-Specific Files
 
@@ -252,4 +280,7 @@ Use the helper script to find package names across platforms:
 
 - [chezmoi documentation](https://www.chezmoi.io/)
 - [Fish shell documentation](https://fishshell.com/docs/current/)
+- [Zsh documentation](https://zsh.sourceforge.io/Doc/)
+- [Powerlevel10k](https://github.com/romkatv/powerlevel10k)
+- [fzf](https://github.com/junegunn/fzf)
 - [Package management documentation](.pkgmgmt/PACKAGES.md)

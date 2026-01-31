@@ -1,37 +1,50 @@
 #!/bin/zsh
 
-# Enable Powerlevel10k instant prompt. Should stay close to the top of .zshrc.
-# Initialization code that may require console input (password prompts, [y/n]
-# confirmations, etc.) must go above this block; everything else may go below.
+# =============================================================================
+# Powerlevel10k Instant Prompt
+# =============================================================================
+# Must stay at the top. Any code that might produce output must go above this.
 if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
 
-# Lazy-load (autoload) Zsh function files from a directory.
+# =============================================================================
+# Custom Functions
+# =============================================================================
+# Autoload functions from .zfunctions directory
 ZFUNCDIR=${ZDOTDIR:-$HOME}/.zfunctions
 fpath=($ZFUNCDIR $fpath)
 autoload -Uz $ZFUNCDIR/*(.:t)
 
-# Set any zstyles you might use for configuration.
-[[ ! -f ${ZDOTDIR:-$HOME}/.zstyles ]] || source ${ZDOTDIR:-$HOME}/.zstyles
-
-# Clone antidote if necessary.
+# =============================================================================
+# Plugin Manager (Antidote)
+# =============================================================================
+# Clone antidote if not present
 if [[ ! -d ${ZDOTDIR:-$HOME}/.antidote ]]; then
   git clone https://github.com/mattmc3/antidote ${ZDOTDIR:-$HOME}/.antidote
 fi
 
-# Create an amazing Zsh config using antidote plugins.
+# Load plugins from .zsh_plugins.txt
 source ${ZDOTDIR:-$HOME}/.antidote/antidote.zsh
 antidote load
 
-# Source anything in .zshrc.d.
+# =============================================================================
+# Modular Configuration
+# =============================================================================
+# Source all .zsh files from .zshrc.d directory
 for _rc in ${ZDOTDIR:-$HOME}/.zshrc.d/*.zsh; do
-  # Ignore tilde files.
-  if [[ $_rc:t != '~'* ]]; then
-    source "$_rc"
-  fi
+  [[ $_rc:t != '~'* ]] && source "$_rc"
 done
 unset _rc
 
-# To customize prompt, run `p10k configure` or edit .p10k.zsh.
+# =============================================================================
+# Prompt Configuration
+# =============================================================================
+# Load Powerlevel10k theme (run `p10k configure` to customize)
 [[ ! -f ${ZDOTDIR:-$HOME}/.p10k.zsh ]] || source ${ZDOTDIR:-$HOME}/.p10k.zsh
+
+# =============================================================================
+# Local Configuration
+# =============================================================================
+# Source machine-specific settings (not managed by chezmoi)
+[[ -f ${ZDOTDIR:-$HOME}/.zshrc.local ]] && source ${ZDOTDIR:-$HOME}/.zshrc.local

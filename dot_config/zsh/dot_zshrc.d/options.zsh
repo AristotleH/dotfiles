@@ -21,6 +21,12 @@ setopt NO_rm_star_silent  # Ask for confirmation for `rm *' or `rm path/*'
 setopt multios        # Write to multiple descriptors.
 
 ### History
+# History file location and size
+HISTFILE=${XDG_STATE_HOME:-$HOME/.local/state}/zsh/history
+HISTSIZE=50000                 # Max events in internal history
+SAVEHIST=50000                 # Max events in history file
+[[ -d ${HISTFILE:h} ]] || mkdir -p ${HISTFILE:h}  # Create dir if needed
+
 setopt bang_hist               # Treat the '!' character specially during expansion.
 setopt extended_history        # Write the history file in the ':start:elapsed;command' format.
 setopt hist_expire_dups_first  # Expire a duplicate event first when trimming history.

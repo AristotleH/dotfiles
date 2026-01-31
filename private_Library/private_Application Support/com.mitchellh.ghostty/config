@@ -1,4 +1,4 @@
-command = /opt/homebrew/bin/fish -i
+command = /bin/zsh
 keybind = global:ctrl+cmd+grave_accent=toggle_quick_terminal
 cursor-style = block
 shell-integration-features = no-cursor
@@ -10,3 +10,4 @@ background-blur-radius = 40
 font-size = 14
 macos-option-as-alt = true
 font-family = Berkeley Mono
+auto-update-channel = tip

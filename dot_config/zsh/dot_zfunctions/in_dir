@@ -1,0 +1,23 @@
+# Run a command in a different directory and return to the original
+# Usage: in_dir <directory> <command> [args...]
+# Returns the exit code of the command
+
+if [[ $# -lt 2 ]]; then
+    echo "Usage: in_dir <directory> <command> [args...]" >&2
+    return 1
+fi
+
+local target_dir="$1"
+shift
+local original_dir="$PWD"
+
+if ! cd "$target_dir" 2>/dev/null; then
+    echo "in_dir: cannot access directory: $target_dir" >&2
+    return 1
+fi
+
+"$@"
+local exit_code=$?
+
+cd "$original_dir"
+return $exit_code

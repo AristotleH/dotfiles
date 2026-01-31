@@ -1,7 +1,7 @@
-#!/bin/zsh
+#!/usr/bin/env fish
 # Zoxide - smarter cd command
 # Usage: z <partial-path> to jump to frequently used directories
 
-(( $+commands[zoxide] )) || return 0
+command -q zoxide; or return 0
 
-eval "$(zoxide init zsh)"
+zoxide init fish | source

@@ -1,3 +1,5 @@
 #!/usr/bin/env fish
+# Environment configuration - runs on every shell start
 
-set -U fish_greeting
+# Disable greeting message (use -g not -U to avoid setting universal var repeatedly)
+set -g fish_greeting
