@@ -6,13 +6,13 @@ on:
       - '.pkgmgmt/**'
       - 'dot_config/Brewfile_darwin'
       - 'dot_config/packages-*.txt.tmpl'
-      - 'dot_config/fish/**'
+      - 'dot_config/zsh/**'
   pull_request:
     paths:
       - '.pkgmgmt/**'
       - 'dot_config/Brewfile_darwin'
       - 'dot_config/packages-*.txt.tmpl'
-      - 'dot_config/fish/**'
+      - 'dot_config/zsh/**'
 
 jobs:
   unit-tests:
