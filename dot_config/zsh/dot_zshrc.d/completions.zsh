@@ -19,12 +19,12 @@ zstyle ':completion:*:descriptions' format '[%d]'
 
 # fzf-tab config
 zstyle ':fzf-tab:*' switch-group '<' '>'                 # Switch groups with < >
-zstyle ':fzf-tab:*' show-group brief                     # Show group name in header
+zstyle ':fzf-tab:*' show-group full                      # Show group name in header only
+zstyle ':fzf-tab:*' prefix ''                            # Remove dot prefix from completions
 zstyle ':fzf-tab:*' use-fzf-default-opts yes             # Use FZF_DEFAULT_OPTS
 
-# fzf-tab colors and bindings
+# fzf-tab bindings
 zstyle ':fzf-tab:*' fzf-flags \
-    --color=fg:1,fg+:2 \
     --bind=tab:accept \
     --no-hscroll
 

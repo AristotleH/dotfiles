@@ -37,14 +37,14 @@
   # Zsh >= 5.1 is required.
   [[ $ZSH_VERSION == (5.<1->*|<6->.*) ]] || return
 
-  # Prompt colors.
+  # Prompt colors (using standard ANSI colors for terminal compatibility).
   local grey='242'
-  local red='#FF5C57'
-  local yellow='#F3F99D'
-  local blue='#57C7FF'
-  local magenta='#FF6AC1'
-  local cyan='#9AEDFE'
-  local white='#F1F1F0'
+  local red='red'
+  local yellow='yellow'
+  local blue='blue'
+  local magenta='magenta'
+  local cyan='cyan'
+  local white='white'
 
   # Left prompt segments.
   typeset -g POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(
@@ -99,6 +99,8 @@
   # Shorten directory: abbreviate parent dirs to shortest unique prefix.
   typeset -g POWERLEVEL9K_SHORTEN_STRATEGY=truncate_to_unique
   typeset -g POWERLEVEL9K_SHORTEN_DIR_LENGTH=1
+  # Remove the asterisk delimiter from truncated directories.
+  typeset -g POWERLEVEL9K_SHORTEN_DELIMITER=
   # Show git repo roots in full and bold.
   typeset -g POWERLEVEL9K_DIR_ANCHOR_BOLD=true
   typeset -g POWERLEVEL9K_SHORTEN_FOLDER_MARKER=.git
