@@ -1,68 +1,76 @@
-#!/usr/bin/env zsh
+#!/bin/sh
 
-function install_brew() {
-    command -v brew &>/dev/null && return 0
+install_brew() {
+    command -v brew >/dev/null 2>&1 && return 0
     echo "Installing Homebrew..."
     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 }
 
-function install_brew_packages() {
+install_brew_packages() {
     {{ if eq .chezmoi.os "darwin" }}
     if [ -f ~/.config/Brewfile_darwin ]; then
         echo "Installing packages from Brewfile..."
         brew bundle --no-upgrade --file=~/.config/Brewfile_darwin
     fi
+    {{ else }}
+    : # No-op on non-Darwin systems
     {{ end }}
 }
 
-function install_linux_packages() {
+install_linux_packages() {
     {{ if eq .chezmoi.os "linux" }}
     # Detect package manager and use generated package list
-    if command -v apt-get &>/dev/null; then
+    if command -v apt-get >/dev/null 2>&1; then
         # Debian/Ubuntu/Raspberry Pi
         if [ -f ~/.config/packages-apt.txt ]; then
             echo "Installing APT packages..."
-            local packages=($(grep -v '^#' ~/.config/packages-apt.txt | grep -v '^$'))
+            packages=$(grep -v '^#' ~/.config/packages-apt.txt | grep -v '^$' | tr '\n' ' ')
             sudo apt-get update -qq
-            sudo apt-get install --no-upgrade -y ${packages[@]}
+            # shellcheck disable=SC2086
+            sudo apt-get install --no-upgrade -y $packages
             sudo apt-get autoremove -y
             sudo apt-get autoclean
         fi
-    elif command -v pacman &>/dev/null; then
+    elif command -v pacman >/dev/null 2>&1; then
         # Arch Linux
         if [ -f ~/.config/packages-pacman.txt ]; then
             echo "Installing Pacman packages..."
-            local packages=($(grep -v '^#' ~/.config/packages-pacman.txt | grep -v '^$'))
-            sudo pacman -S --needed --noconfirm ${packages[@]}
+            packages=$(grep -v '^#' ~/.config/packages-pacman.txt | grep -v '^$' | tr '\n' ' ')
+            # shellcheck disable=SC2086
+            sudo pacman -S --needed --noconfirm $packages
         fi
-    elif command -v dnf &>/dev/null; then
+    elif command -v dnf >/dev/null 2>&1; then
         # Fedora/RHEL
         if [ -f ~/.config/packages-dnf.txt ]; then
             echo "Installing DNF packages..."
-            local packages=($(grep -v '^#' ~/.config/packages-dnf.txt | grep -v '^$'))
-            sudo dnf install -y ${packages[@]}
+            packages=$(grep -v '^#' ~/.config/packages-dnf.txt | grep -v '^$' | tr '\n' ' ')
+            # shellcheck disable=SC2086
+            sudo dnf install -y $packages
         fi
-    elif command -v pacman &>/dev/null && [ -f /mingw64/bin/pacman ]; then
+    elif [ -f /mingw64/bin/pacman ]; then
         # MSYS2 (Windows)
         if [ -f ~/.config/packages-msys2.txt ]; then
             echo "Installing MSYS2 packages..."
-            local packages=($(grep -v '^#' ~/.config/packages-msys2.txt | grep -v '^$'))
-            pacman -S --needed --noconfirm ${packages[@]}
+            packages=$(grep -v '^#' ~/.config/packages-msys2.txt | grep -v '^$' | tr '\n' ' ')
+            # shellcheck disable=SC2086
+            pacman -S --needed --noconfirm $packages
         fi
     fi
+    {{ else }}
+    : # No-op on non-Linux systems
     {{ end }}
 }
 
-function setup_fish() {
+setup_fish() {
     # Only configure fish if it's installed
-    if command -v fish &>/dev/null; then
+    if command -v fish >/dev/null 2>&1; then
         echo "Setting up fish shell..."
         fish -c "fisher update" 2>/dev/null || true
         fish -c "tide configure --auto --style=Lean --prompt_colors='16 colors' --show_time=No --lean_prompt_height='One line' --prompt_spacing=Compact --icons='Few icons' --transient=Yes" 2>/dev/null || true
     fi
 }
 
-function main() {
+main() {
     {{ if .packages.runInstalls }}
     echo "🚀 Installing packages..."
 

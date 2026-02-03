@@ -3,10 +3,9 @@ dot_DS_Store
 ~/dot_config/zsh/dot_zsh_sessions
 {{ end }}
 
-{{ if eq .chezmoi.os "windows" }}
-# zsh scripts can't run on Windows
-.chezmoiscripts/run_onchange_after_z_install_packages.zsh.tmpl
-{{ end }}
+# {{ if eq .chezmoi.os "windows" }}
+#
+# {{ end }}
 
 # Package management system (not mirrored to home)
 .pkgmgmt/
