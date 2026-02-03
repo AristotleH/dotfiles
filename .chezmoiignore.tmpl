@@ -4,8 +4,8 @@ dot_DS_Store
 {{ end }}
 
 {{ if eq .chezmoi.os "windows" }}
-# zsh scripts can't run on Windows
-.chezmoiscripts/run_onchange_after_z_install_packages.zsh.tmpl
+# bash scripts can't run on Windows
+.chezmoiscripts/run_onchange_after_z_install_packages.sh.tmpl
 {{ end }}
 
 # Package management system (not mirrored to home)
