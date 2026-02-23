@@ -61,15 +61,6 @@ install_linux_packages() {
     {{ end }}
 }
 
-setup_fish() {
-    # Only configure fish if it's installed
-    if command -v fish >/dev/null 2>&1; then
-        echo "Setting up fish shell..."
-        fish -c "fisher update" 2>/dev/null || true
-        fish -c "tide configure --auto --style=Lean --prompt_colors='16 colors' --show_time=No --lean_prompt_height='One line' --prompt_spacing=Compact --icons='Few icons' --transient=Yes" 2>/dev/null || true
-    fi
-}
-
 main() {
     {{ if .packages.runInstalls }}
     echo "🚀 Installing packages..."
@@ -99,9 +90,6 @@ main() {
     echo "📦 Linux detected - installing via native package manager"
     install_linux_packages
     {{     end }}
-
-    # Set up fish shell configuration
-    setup_fish
 
     echo "✅ Package installation complete!"
     {{ else }}
