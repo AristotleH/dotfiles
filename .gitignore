@@ -23,9 +23,10 @@ env/
 .LSOverride
 
 # Chezmoi
-# Don't ignore generated files - they should be committed
-# but ignore chezmoi's work directory if present
 .chezmoi/
+
+# Generated shell config files are ignored by .gitignore files
+# written into each output directory by generate_shell.py
 
 # Local testing
 test-output/

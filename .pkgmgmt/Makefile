@@ -1,18 +1,28 @@
-.PHONY: help generate test test-sync test-unit test-zsh clean check
+.PHONY: help generate generate-shell generate-shell-target test test-sync test-unit test-zsh test-shell-unit test-shell-sync clean check
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
-generate:  ## Generate all package lists from packages.yaml
+generate:  ## Generate all package lists and shell configs
 	@echo "🔄 Generating package lists..."
 	@python3 generate_packages.py
-	@echo "✅ Done! Generated files are ready for commit."
+	@echo "🔄 Generating shell configs (to chezmoi source dir)..."
+	@python3 generate_shell.py
+	@echo "✅ Done!"
+
+generate-shell:  ## Generate shell configs from shell.yaml (source dir)
+	@python3 generate_shell.py
+
+generate-shell-target:  ## Generate shell configs to ~/.config (like chezmoi apply)
+	@python3 generate_shell.py --target ~/.config shell.yaml ~/.config/shell.d
 
 test:  ## Run all tests
 	@echo "🧪 Running all tests..."
 	@python3 tests/test_generator.py
 	@python3 tests/test_sync.py
 	@python3 tests/test_zsh.py
+	@python3 tests/test_shell_generator.py
+	@python3 tests/test_shell_sync.py
 	@echo "✅ All tests passed!"
 
 test-unit:  ## Run unit tests only
@@ -22,10 +32,19 @@ test-unit:  ## Run unit tests only
 test-sync:  ## Test that generated files are in sync
 	@echo "🔍 Checking if generated files are in sync..."
 	@python3 tests/test_sync.py
+	@python3 tests/test_shell_sync.py
 
 test-zsh:  ## Run zsh configuration tests
 	@echo "🔍 Checking zsh configuration..."
 	@python3 tests/test_zsh.py
+
+test-shell-unit:  ## Run shell generator unit tests
+	@echo "🧪 Running shell generator unit tests..."
+	@python3 tests/test_shell_generator.py
+
+test-shell-sync:  ## Validate shell generator output in temp dir
+	@echo "🔍 Validating shell generator output..."
+	@python3 tests/test_shell_sync.py
 
 check: test-sync test-zsh  ## Quick check before commit
 
@@ -38,8 +57,9 @@ clean:  ## Remove Python cache files
 workflow:  ## Show typical workflow
 	@echo "📋 Package Management Workflow:"
 	@echo ""
-	@echo "1. Edit packages.yaml"
+	@echo "1. Edit packages.yaml or shell.yaml"
 	@echo "   vim packages.yaml"
+	@echo "   vim shell.yaml"
 	@echo ""
 	@echo "2. Generate platform files"
 	@echo "   make generate"
@@ -47,15 +67,12 @@ workflow:  ## Show typical workflow
 	@echo "3. Test everything"
 	@echo "   make test"
 	@echo ""
-	@echo "4. Review changes"
-	@echo "   git diff"
+	@echo "4. Review and commit"
+	@echo "   git diff && git add -p && git commit"
 	@echo ""
-	@echo "5. Commit"
-	@echo "   git add packages.yaml ../dot_Brewfile_darwin ../dot_config/packages-*.txt.tmpl"
-	@echo "   git commit -m 'Add new package: <name>'"
-	@echo ""
-	@echo "6. Apply with chezmoi"
+	@echo "5. Apply (shell configs are generated automatically)"
 	@echo "   chezmoi apply"
 	@echo ""
-	@echo "7. Install packages"
-	@echo "   install-packages"
+	@echo "📋 Per-machine shell customization:"
+	@echo "   Create ~/.config/shell.d/*.yaml with extra functions/modules"
+	@echo "   See SHELL.md for details"

@@ -6,13 +6,13 @@ on:
       - '.pkgmgmt/**'
       - 'dot_config/Brewfile_darwin'
       - 'dot_config/packages-*.txt.tmpl'
-      - 'dot_config/zsh/**'
+      - '.chezmoiscripts/**'
   pull_request:
     paths:
       - '.pkgmgmt/**'
       - 'dot_config/Brewfile_darwin'
       - 'dot_config/packages-*.txt.tmpl'
-      - 'dot_config/zsh/**'
+      - '.chezmoiscripts/**'
 
 jobs:
   unit-tests:
@@ -38,6 +38,12 @@ jobs:
 
       - name: Validate zsh configuration
         run: python3 .pkgmgmt/tests/test_zsh.py
+
+      - name: Run shell generator unit tests
+        run: python3 .pkgmgmt/tests/test_shell_generator.py
+
+      - name: Validate shell generator (temp dir)
+        run: python3 .pkgmgmt/tests/test_shell_sync.py
 
       - name: Validate Brewfile syntax
         if: hashFiles('dot_config/Brewfile_darwin') != ''
@@ -95,6 +101,16 @@ jobs:
               line_count=$(grep -v "^#" ~/.config/packages-apt.txt | grep -v "^$" | wc -l)
               echo "📦 Found $line_count packages in APT list"
               if [ "$line_count" -lt 5 ]; then echo "❌ Expected more packages in list"; exit 1; fi
+              echo "🔍 Verifying generated shell config files..."
+              for f in \
+                ~/.config/fish/functions/is-darwin.fish \
+                ~/.config/fish/functions/is-linux.fish \
+                ~/.config/fish/conf.d/00-path.fish \
+                ~/.config/zsh/.zfunctions/is-darwin \
+                ~/.config/zsh/.zfunctions/is-linux \
+                ~/.config/zsh/.zshrc.d/00-path.zsh; do
+                test -f "$f" || { echo "❌ Missing generated file: $f"; exit 1; }
+              done
               echo "✅ All checks passed!"'
 
   test-macos:

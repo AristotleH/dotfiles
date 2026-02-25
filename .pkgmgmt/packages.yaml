@@ -80,9 +80,6 @@ cli_tools:
     pkg: eza
     msys2: mingw-w64-ucrt-x86_64-eza
 
-  - name: fzf
-    pkg: fzf
-    msys2: mingw-w64-ucrt-x86_64-fzf
 
   # Development Tools
   - name: chezmoi

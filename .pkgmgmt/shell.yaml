@@ -1,0 +1,173 @@
+# Shell Configuration Manifest
+#
+# Single source of truth for cross-shell functions and modules.
+# Run `generate_shell.py` (or `make generate-shell`) to produce
+# Fish and Zsh files from this manifest.
+#
+# -------------------------------------------------------------------------
+# Quick Reference
+# -------------------------------------------------------------------------
+#
+# Functions:
+#   Predicate (one-liner OS check):
+#     - name: is-darwin
+#       description: Check if running on macOS
+#       predicate: os_is_darwin          # see PREDICATES in generate_shell.py
+#
+#   Complex (shell-specific bodies):
+#     - name: my_func
+#       description: Does something
+#       body:
+#         fish: |
+#           echo hello
+#         zsh: |
+#           echo hello
+#
+# Modules:
+#   PATH:
+#     - name: path
+#       prefix: "00"
+#       description: PATH additions
+#       paths:
+#         - "$HOME/.local/bin"
+#
+#   Aliases (guard + alias list):
+#     - name: eza
+#       prefix: "40"
+#       description: Modern ls replacement
+#       guard: { command_exists: eza }    # see GUARDS in generate_shell.py
+#       aliases:
+#         ls: "eza"
+#
+#   Tool init (guard + tool init shell | source):
+#     - name: zoxide
+#       prefix: "50"
+#       description: Zoxide
+#       guard: { command_exists: zoxide }
+#       tool: zoxide
+#
+#   Custom (guards + body):
+#     - name: tmux
+#       prefix: "70"
+#       description: Tmux auto-attach
+#       guards:
+#         - { command_exists: tmux }
+#         - is_interactive
+#       body:
+#         shared: |
+#           tmux attach 2>/dev/null || tmux new-session
+#
+# Guards (singular `guard:` or list `guards:`):
+#   { command_exists: <cmd> }
+#   { env_not_set: <VAR> }
+#   { env_equals: { var: <VAR>, value: <VAL> } }
+#   { not_env_equals: { var: <VAR>, value: <VAL> } }
+#   is_tty
+#   is_interactive
+# -------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Functions
+# ---------------------------------------------------------------------------
+functions:
+  # Predicate functions — one-liner OS checks
+  - name: is-darwin
+    description: Check if running on macOS
+    predicate: os_is_darwin
+
+  - name: is-linux
+    description: Check if running on Linux
+    predicate: os_is_linux
+
+  # Complex functions — shell-specific bodies
+  - name: in_dir
+    description: Run a command in a different directory and return to the original
+    usage: "in_dir <directory> <command> [args...]"
+    body:
+      fish: |
+        if test (count $argv) -lt 2
+            echo "Usage: in_dir <directory> <command> [args...]" >&2
+            return 1
+        end
+
+        set -l target_dir $argv[1]
+        set -l original_dir $PWD
+
+        if not cd $target_dir 2>/dev/null
+            echo "in_dir: cannot access directory: $target_dir" >&2
+            return 1
+        end
+
+        # Run the command (from argv[2] onwards)
+        $argv[2..]
+        set -l exit_code $status
+
+        cd $original_dir
+        return $exit_code
+      zsh: |
+        if [[ $# -lt 2 ]]; then
+            echo "Usage: in_dir <directory> <command> [args...]" >&2
+            return 1
+        fi
+
+        local target_dir="$1"
+        shift
+        local original_dir="$PWD"
+
+        if ! cd "$target_dir" 2>/dev/null; then
+            echo "in_dir: cannot access directory: $target_dir" >&2
+            return 1
+        fi
+
+        "$@"
+        local exit_code=$?
+
+        cd "$original_dir"
+        return $exit_code
+
+# ---------------------------------------------------------------------------
+# Modules
+# ---------------------------------------------------------------------------
+modules:
+  # PATH additions
+  - name: path
+    prefix: "00"
+    description: PATH additions
+    paths:
+      - "$HOME/.local/bin"
+
+  # Aliases module — identical aliases across shells
+  - name: eza
+    prefix: "40"
+    description: Modern ls replacement using eza
+    url: https://github.com/eza-community/eza
+    guard: { command_exists: eza }
+    aliases:
+      ls: "eza"
+      ll: "eza -l"
+      la: "eza -la"
+      lt: "eza --tree"
+
+  # Tool init — `tool init shell | source` pattern
+  - name: zoxide
+    prefix: "50"
+    description: "Zoxide - smarter cd command"
+    comment: "Usage: z <partial-path> to jump to frequently used directories"
+    guard: { command_exists: zoxide }
+    tool: zoxide
+
+  # Custom module — declarative guards + body
+  - name: tmux
+    prefix: "70"
+    description: Tmux auto-attach/start
+    comment: Set TMUX_AUTO_ATTACH=1 to enable
+    guards:
+      - { command_exists: tmux }
+      - { env_equals: { var: TMUX_AUTO_ATTACH, value: "1" } }
+      - is_tty
+      - { env_not_set: TMUX }
+      - { not_env_equals: { var: TERM_PROGRAM, value: vscode } }
+      - is_interactive
+    body:
+      shared: |
+        tmux attach 2>/dev/null || tmux new-session
