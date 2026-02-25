@@ -5,7 +5,7 @@ Tests for fish shell configuration files.
 Validates structure, conventions, and absence of common pitfalls
 in the chezmoi-managed fish config.
 
-Run with: python3 tests/test_fish.py
+Run with: python3 .tests/test_fish.py
 """
 
 import re
@@ -13,7 +13,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).parent.parent.parent
+REPO_ROOT = Path(__file__).parent.parent
 FISH_DIR = REPO_ROOT / "dot_config" / "fish"
 CONFIG_FISH = FISH_DIR / "config.fish"
 CONF_D = FISH_DIR / "conf.d"

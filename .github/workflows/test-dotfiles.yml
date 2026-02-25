@@ -1,0 +1,55 @@
+name: Dotfiles & Shell Tests
+
+on:
+  push:
+    paths:
+      - '.tests/**'
+      - '.shellgen/**'
+      - 'dot_config/zsh/**'
+      - 'dot_config/fish/**'
+  pull_request:
+    paths:
+      - '.tests/**'
+      - '.shellgen/**'
+      - 'dot_config/zsh/**'
+      - 'dot_config/fish/**'
+
+jobs:
+  shell-config:
+    name: Shell Config Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Validate zsh configuration
+        run: python3 .tests/test_zsh.py
+
+      - name: Validate fish configuration
+        run: python3 .tests/test_fish.py
+
+  shell-generator:
+    name: Shell Generator Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Run shell generator unit tests
+        run: python3 .shellgen/tests/test_shell_generator.py
+
+      - name: Validate shell generator (temp dir)
+        run: python3 .shellgen/tests/test_shell_sync.py

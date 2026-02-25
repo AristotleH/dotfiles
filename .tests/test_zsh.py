@@ -5,7 +5,7 @@ Tests for zsh configuration files.
 Validates syntax, load order, structure, plugin configuration, and absence
 of dead code in the chezmoi-managed zsh config.
 
-Run with: python3 tests/test_zsh.py
+Run with: python3 .tests/test_zsh.py
 """
 
 import re
@@ -13,7 +13,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).parent.parent.parent
+REPO_ROOT = Path(__file__).parent.parent
 ZSH_DIR = REPO_ROOT / "dot_config" / "zsh"
 ZSHRC = ZSH_DIR / "dot_zshrc"
 ZSHRC_D = ZSH_DIR / "dot_zshrc.d"

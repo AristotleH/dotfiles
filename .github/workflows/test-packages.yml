@@ -6,16 +6,12 @@ on:
       - '.pkgmgmt/**'
       - 'dot_config/Brewfile_darwin'
       - 'dot_config/packages-*.txt.tmpl'
-      - 'dot_config/zsh/**'
-      - 'dot_config/fish/**'
       - '.chezmoiscripts/**'
   pull_request:
     paths:
       - '.pkgmgmt/**'
       - 'dot_config/Brewfile_darwin'
       - 'dot_config/packages-*.txt.tmpl'
-      - 'dot_config/zsh/**'
-      - 'dot_config/fish/**'
       - '.chezmoiscripts/**'
 
 jobs:
@@ -39,18 +35,6 @@ jobs:
 
       - name: Check generated files are in sync
         run: python3 .pkgmgmt/tests/test_sync.py
-
-      - name: Validate zsh configuration
-        run: python3 .pkgmgmt/tests/test_zsh.py
-
-      - name: Validate fish configuration
-        run: python3 .pkgmgmt/tests/test_fish.py
-
-      - name: Run shell generator unit tests
-        run: python3 .pkgmgmt/tests/test_shell_generator.py
-
-      - name: Validate shell generator (temp dir)
-        run: python3 .pkgmgmt/tests/test_shell_sync.py
 
       - name: Validate Brewfile syntax
         if: hashFiles('dot_config/Brewfile_darwin') != ''

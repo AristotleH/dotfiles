@@ -25,7 +25,7 @@ if ! "$PYTHON3" -c "import yaml" 2>/dev/null; then
 fi
 
 CHEZMOI_SRC="{{ .chezmoi.sourceDir }}"
-GENERATOR="${CHEZMOI_SRC}/.pkgmgmt/generate_shell.py"
+GENERATOR="${CHEZMOI_SRC}/.shellgen/generate_shell.py"
 
 if [ ! -f "$GENERATOR" ]; then
     echo "shell-gen: generator not found at $GENERATOR, skipping"
@@ -34,4 +34,4 @@ fi
 
 EXTRA_DIR="{{ .chezmoi.homeDir }}/.config/shell.d"
 
-"$PYTHON3" "$GENERATOR" --target "{{ .chezmoi.homeDir }}/.config" "$CHEZMOI_SRC/.pkgmgmt/shell.yaml" "$EXTRA_DIR"
+"$PYTHON3" "$GENERATOR" --target "{{ .chezmoi.homeDir }}/.config" "$CHEZMOI_SRC/.shellgen/shell.yaml" "$EXTRA_DIR"

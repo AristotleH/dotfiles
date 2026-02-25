@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 
-HEADER = "# Generated from .pkgmgmt/shell.yaml -- DO NOT EDIT"
+HEADER = "# Generated from .shellgen/shell.yaml -- DO NOT EDIT"
 
 # ---------------------------------------------------------------------------
 # Data tables — add a new guard or predicate by adding one line
