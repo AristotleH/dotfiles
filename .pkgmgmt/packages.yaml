@@ -133,180 +133,183 @@ cli_tools:
     macos: mas
     skip: [msys2, apt, pacman, dnf]
 
-macos_apps:
-  # Development
-  - name: visual-studio-code
-    type: gui
-    cask: visual-studio-code
-
-  - name: cursor
-    type: gui
-    cask: cursor
-
-  - name: claude-code
-    type: gui
-    cask: claude-code
-
-  - name: zed
-    type: gui
-    cask: zed
-
-  # Terminal Emulators
-  - name: iterm2
-    type: gui
-    cask: iterm2
-
-  - name: ghostty
-    type: gui
-    cask: ghostty
-
-  # Container/Virtualization
-  - name: docker-desktop
-    type: service
-    cask: docker-desktop
-
-  - name: orbstack
-    type: service
-    cask: orbstack
-
-  # Fonts
-  - name: jetbrains-mono
-    type: font
-    cask: font-jetbrains-mono
-
-  - name: jetbrains-mono-nerd-font
-    type: font
-    cask: font-jetbrains-mono-nerd-font
-
-  # AI Tools
-  - name: chatgpt
-    type: gui
-    cask: chatgpt
-
-  - name: claude
-    type: gui
-    cask: claude
-
-  - name: lm-studio
-    type: gui
-    cask: lm-studio
-
-  - name: ollama
-    type: service
-    brew: ollama
-    brew_options: "restart_service: :changed"
-
-  # Productivity
-  - name: 1password
-    type: gui
-    cask: 1password
-
-  - name: notion
-    type: gui
-    cask: notion
-
-  - name: obsidian
-    type: gui
-    cask: obsidian
-
-  # System Utilities
-  - name: betterdisplay
-    type: gui
-    cask: betterdisplay
-
-  - name: bettertouchtool
-    type: gui
-    cask: bettertouchtool
-
-  - name: keka
-    type: gui
-    cask: keka
-
-  - name: linearmouse
-    type: gui
-    cask: linearmouse
-
-  - name: mac-mouse-fix
-    type: gui
-    cask: mac-mouse-fix
-
-  - name: swish
-    type: gui
-    cask: swish
-
-  # File Transfer & Communication
-  - name: transmit
-    type: gui
-    cask: transmit
-
-  - name: mimestream
-    type: gui
-    cask: mimestream
-
-  - name: discord
-    type: gui
-    cask: discord
-
-  # Browsers & Web
-  - name: google-chrome
-    type: gui
-    cask: google-chrome
-
-  - name: google-drive
-    type: gui
-    cask: google-drive
-  
-  - name: chatgpt-atlas
-    type: gui
-    cask: chatgpt-atlas
-
-  # Document & Creative Tools
-  - name: basictex
-    type: gui
-    cask: basictex
-
-  # Entertainment
-  - name: spotify
-    type: gui
-    cask: spotify
-
-  - name: steam
-    type: gui
-    cask: steam
-
-  # Mac App Store Apps
-  - name: 1Password for Safari
-    type: gui
-    mas_id: 1569813296
-
-  - name: Amphetamine
-    type: gui
-    mas_id: 937984704
-
-  - name: Copilot
-    type: gui
-    mas_id: 1447330651
-
-  - name: Goodnotes
-    type: gui
-    mas_id: 1444383602
-
-  - name: Noir
-    type: gui
-    mas_id: 1592917505
-
-  - name: SponsorBlock
-    type: gui
-    mas_id: 1573461917
-
-  - name: TestFlight
-    type: gui
-    mas_id: 899247664
-
-  - name: Wipr
-    type: gui
-    mas_id: 1662217862
-
-  - name: Xcode
-    type: gui
-    mas_id: 497799835
+# macOS GUI apps (casks) and Mac App Store apps
+# Uncomment the apps you want to install
+#
+# macos_apps:
+#   # Development
+#   - name: visual-studio-code
+#     type: gui
+#     cask: visual-studio-code
+#
+#   - name: cursor
+#     type: gui
+#     cask: cursor
+#
+#   - name: claude-code
+#     type: gui
+#     cask: claude-code
+#
+#   - name: zed
+#     type: gui
+#     cask: zed
+#
+#   # Terminal Emulators
+#   - name: iterm2
+#     type: gui
+#     cask: iterm2
+#
+#   - name: ghostty
+#     type: gui
+#     cask: ghostty
+#
+#   # Container/Virtualization
+#   - name: docker-desktop
+#     type: service
+#     cask: docker-desktop
+#
+#   - name: orbstack
+#     type: service
+#     cask: orbstack
+#
+#   # Fonts
+#   - name: jetbrains-mono
+#     type: font
+#     cask: font-jetbrains-mono
+#
+#   - name: jetbrains-mono-nerd-font
+#     type: font
+#     cask: font-jetbrains-mono-nerd-font
+#
+#   # AI Tools
+#   - name: chatgpt
+#     type: gui
+#     cask: chatgpt
+#
+#   - name: claude
+#     type: gui
+#     cask: claude
+#
+#   - name: lm-studio
+#     type: gui
+#     cask: lm-studio
+#
+#   - name: ollama
+#     type: service
+#     brew: ollama
+#     brew_options: "restart_service: :changed"
+#
+#   # Productivity
+#   - name: 1password
+#     type: gui
+#     cask: 1password
+#
+#   - name: notion
+#     type: gui
+#     cask: notion
+#
+#   - name: obsidian
+#     type: gui
+#     cask: obsidian
+#
+#   # System Utilities
+#   - name: betterdisplay
+#     type: gui
+#     cask: betterdisplay
+#
+#   - name: bettertouchtool
+#     type: gui
+#     cask: bettertouchtool
+#
+#   - name: keka
+#     type: gui
+#     cask: keka
+#
+#   - name: linearmouse
+#     type: gui
+#     cask: linearmouse
+#
+#   - name: mac-mouse-fix
+#     type: gui
+#     cask: mac-mouse-fix
+#
+#   - name: swish
+#     type: gui
+#     cask: swish
+#
+#   # File Transfer & Communication
+#   - name: transmit
+#     type: gui
+#     cask: transmit
+#
+#   - name: mimestream
+#     type: gui
+#     cask: mimestream
+#
+#   - name: discord
+#     type: gui
+#     cask: discord
+#
+#   # Browsers & Web
+#   - name: google-chrome
+#     type: gui
+#     cask: google-chrome
+#
+#   - name: google-drive
+#     type: gui
+#     cask: google-drive
+#
+#   - name: chatgpt-atlas
+#     type: gui
+#     cask: chatgpt-atlas
+#
+#   # Document & Creative Tools
+#   - name: basictex
+#     type: gui
+#     cask: basictex
+#
+#   # Entertainment
+#   - name: spotify
+#     type: gui
+#     cask: spotify
+#
+#   - name: steam
+#     type: gui
+#     cask: steam
+#
+#   # Mac App Store Apps
+#   - name: 1Password for Safari
+#     type: gui
+#     mas_id: 1569813296
+#
+#   - name: Amphetamine
+#     type: gui
+#     mas_id: 937984704
+#
+#   - name: Copilot
+#     type: gui
+#     mas_id: 1447330651
+#
+#   - name: Goodnotes
+#     type: gui
+#     mas_id: 1444383602
+#
+#   - name: Noir
+#     type: gui
+#     mas_id: 1592917505
+#
+#   - name: SponsorBlock
+#     type: gui
+#     mas_id: 1573461917
+#
+#   - name: TestFlight
+#     type: gui
+#     mas_id: 899247664
+#
+#   - name: Wipr
+#     type: gui
+#     mas_id: 1662217862
+#
+#   - name: Xcode
+#     type: gui
+#     mas_id: 497799835

@@ -1,50 +1,41 @@
 #!/bin/zsh
 
-# =============================================================================
 # Powerlevel10k Instant Prompt
-# =============================================================================
 # Must stay at the top. Any code that might produce output must go above this.
 if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
 
-# =============================================================================
 # Custom Functions
-# =============================================================================
-# Autoload functions from .zfunctions directory
 ZFUNCDIR=${ZDOTDIR:-$HOME}/.zfunctions
 fpath=($ZFUNCDIR $fpath)
 autoload -Uz $ZFUNCDIR/*(.:t)
 
-# =============================================================================
 # Plugin Manager (Antidote)
-# =============================================================================
-# Clone antidote if not present
 if [[ ! -d ${ZDOTDIR:-$HOME}/.antidote ]]; then
   git clone https://github.com/mattmc3/antidote ${ZDOTDIR:-$HOME}/.antidote
 fi
 
-# Load plugins from .zsh_plugins.txt
+# zsh-autocomplete settings (must be set BEFORE the plugin loads)
+zstyle ':autocomplete:*' min-input 0              # Show completions immediately (needed for Ctrl-R on empty line)
+zstyle ':autocomplete:*' recent-dirs zoxide       # Use zoxide for recent dirs
+zstyle -e ':autocomplete:*:*' list-lines 'reply=( $(( LINES / 3 )) )'
+zstyle ':autocomplete:history-incremental-search-backward:*' list-lines 16
+zstyle ':autocomplete:history-search-backward:*' list-lines 2000
+zstyle ':autocomplete:*complete*:*' insert-unambiguous yes # Insert common substring first, then open menu
+
+# Load plugins
 source ${ZDOTDIR:-$HOME}/.antidote/antidote.zsh
 antidote load
 
-# =============================================================================
 # Modular Configuration
-# =============================================================================
-# Source all .zsh files from .zshrc.d directory
 for _rc in ${ZDOTDIR:-$HOME}/.zshrc.d/*.zsh; do
   [[ $_rc:t != '~'* ]] && source "$_rc"
 done
 unset _rc
 
-# =============================================================================
-# Prompt Configuration
-# =============================================================================
-# Load Powerlevel10k theme (run `p10k configure` to customize)
+# Prompt (run `p10k configure` to customize)
 [[ ! -f ${ZDOTDIR:-$HOME}/.p10k.zsh ]] || source ${ZDOTDIR:-$HOME}/.p10k.zsh
 
-# =============================================================================
-# Local Configuration
-# =============================================================================
-# Source machine-specific settings (not managed by chezmoi)
+# Local overrides (not managed by chezmoi)
 [[ -f ${ZDOTDIR:-$HOME}/.zshrc.local ]] && source ${ZDOTDIR:-$HOME}/.zshrc.local

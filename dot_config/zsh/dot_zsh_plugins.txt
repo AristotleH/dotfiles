@@ -1,12 +1,14 @@
-# Completions
-mattmc3/ez-compinit
+# Completions (zsh-autocomplete calls compinit itself — do not add ez-compinit)
 zsh-users/zsh-completions kind:fpath path:src
-Aloxaf/fzf-tab
+# Aloxaf/fzf-tab                                        # Fuzzy tab completion (disabled, using zsh-autocomplete)
 
 # Prompt theme
 romkatv/powerlevel10k
 
 # Fish-like features
-ohmyzsh/ohmyzsh path:plugins/colored-man-pages  # Colorized man pages
 zdharma-continuum/fast-syntax-highlighting      # Command syntax highlighting
 zsh-users/zsh-autosuggestions                   # History-based suggestions
+
+# Fish-like completions - must load AFTER syntax highlighting to avoid
+# "unhandled ZLE widget" warnings for menu-search and recent-paths
+marlonrichert/zsh-autocomplete

@@ -1,6 +1,6 @@
 {{ $email := promptStringOnce . "git.email" "git email" }}
 {{ $name := promptStringOnce . "git.name" "git name" }}
-{{ $runInstalls := promptBoolOnce . "packages.runInstalls" "Should I install packages automatically" }}
+{{ $runInstalls := false }}{{/* Package auto-install disabled by default */}}
 
 [data.git]
     email = {{ $email | quote }}

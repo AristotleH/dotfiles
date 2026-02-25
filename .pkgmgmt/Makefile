@@ -1,4 +1,4 @@
-.PHONY: help generate test test-sync test-unit clean check
+.PHONY: help generate test test-sync test-unit test-zsh clean check
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -12,6 +12,7 @@ test:  ## Run all tests
 	@echo "🧪 Running all tests..."
 	@python3 tests/test_generator.py
 	@python3 tests/test_sync.py
+	@python3 tests/test_zsh.py
 	@echo "✅ All tests passed!"
 
 test-unit:  ## Run unit tests only
@@ -22,7 +23,11 @@ test-sync:  ## Test that generated files are in sync
 	@echo "🔍 Checking if generated files are in sync..."
 	@python3 tests/test_sync.py
 
-check: test-sync  ## Quick check before commit (alias for test-sync)
+test-zsh:  ## Run zsh configuration tests
+	@echo "🔍 Checking zsh configuration..."
+	@python3 tests/test_zsh.py
+
+check: test-sync test-zsh  ## Quick check before commit
 
 clean:  ## Remove Python cache files
 	@echo "🧹 Cleaning up..."

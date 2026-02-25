@@ -36,6 +36,9 @@ jobs:
       - name: Check generated files are in sync
         run: python3 .pkgmgmt/tests/test_sync.py
 
+      - name: Validate zsh configuration
+        run: python3 .pkgmgmt/tests/test_zsh.py
+
       - name: Validate Brewfile syntax
         if: hashFiles('dot_config/Brewfile_darwin') != ''
         run: |
