@@ -413,7 +413,6 @@ def test_no_duplicate_setopts():
     """No option should be set/unset more than once across all .zshrc.d files."""
     seen = {}  # option_name -> (file, line)
     setopt_re = re.compile(r'^\s*setopt\s+(\w+)', re.IGNORECASE)
-    no_re = re.compile(r'^\s*setopt\s+NO_?(\w+)', re.IGNORECASE)
 
     for f in sorted(ZSHRC_D.glob("*.zsh")):
         for i, line in enumerate(f.read_text().splitlines(), 1):
