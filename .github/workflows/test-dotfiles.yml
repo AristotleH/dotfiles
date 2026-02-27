@@ -104,6 +104,7 @@ jobs:
           [data.git]
             email = "test@example.com"
             name = "Test User"
+            extraConfigs = ""
           [data.packages]
             runInstalls = false
           [data.shell]
@@ -140,6 +141,7 @@ jobs:
           [data.git]
             email = "test@example.com"
             name = "Test User"
+            extraConfigs = ""
           [data.packages]
             runInstalls = false
           [data.shell]

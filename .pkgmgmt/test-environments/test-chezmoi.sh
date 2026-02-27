@@ -82,6 +82,7 @@ if [ "$REPO_SOURCE" = "local" ]; then
 [data.git]
   email = "test@example.com"
   name = "Test User"
+  extraConfigs = ""
 
 [data.packages]
   runInstalls = false
@@ -123,6 +124,7 @@ else
 [data.git]
   email = \"test@example.com\"
   name = \"Test User\"
+  extraConfigs = \"\"
 
 [data.packages]
   runInstalls = false
