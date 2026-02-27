@@ -17,7 +17,7 @@ if [[ ! -d ${ZDOTDIR:-$HOME}/.antidote ]]; then
 fi
 
 # zsh-autocomplete settings (must be set BEFORE the plugin loads)
-zstyle ':autocomplete:*' min-input 0              # Show completions immediately (needed for Ctrl-R on empty line)
+zstyle ':autocomplete:*' min-input 1              # Require at least 1 char before showing completions
 zstyle ':autocomplete:*' recent-dirs zoxide       # Use zoxide for recent dirs
 zstyle -e ':autocomplete:*:*' list-lines 'reply=( $(( LINES / 3 )) )'
 zstyle ':autocomplete:history-incremental-search-backward:*' list-lines 16

@@ -1,0 +1,104 @@
+name: Dotfiles & Shell Tests
+
+on:
+  push:
+    paths:
+      - '.tests/**'
+      - '.shellgen/**'
+      - '.chezmoiscripts/**'
+      - 'dot_config/zsh/**'
+      - 'dot_config/fish/**'
+  pull_request:
+    paths:
+      - '.tests/**'
+      - '.shellgen/**'
+      - '.chezmoiscripts/**'
+      - 'dot_config/zsh/**'
+      - 'dot_config/fish/**'
+
+jobs:
+  shell-config:
+    name: Shell Config Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Validate zsh configuration
+        run: python3 .tests/test_zsh.py
+
+      - name: Validate fish configuration
+        run: python3 .tests/test_fish.py
+
+  shell-generator:
+    name: Shell Generator Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Run shell generator unit tests
+        run: python3 .shellgen/tests/test_shell_generator.py
+
+      - name: Validate shell generator (temp dir)
+        run: python3 .shellgen/tests/test_shell_sync.py
+
+  integration-test:
+    name: Integration Test (chezmoi apply)
+    runs-on: ubuntu-latest
+    needs: [shell-config, shell-generator]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build test image
+        uses: docker/build-push-action@v5
+        with:
+          context: .pkgmgmt/test-environments
+          file: .pkgmgmt/test-environments/Dockerfile.debian
+          tags: chezmoi-test-debian:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          load: true
+
+      - name: Test chezmoi apply generates shell files
+        run: |
+          docker run --rm \
+            -v "$PWD:/dotfiles-src:ro" \
+            chezmoi-test-debian:latest \
+            bash -c 'set -e
+              cp -r /dotfiles-src /tmp/dotfiles
+              mkdir -p ~/.config/chezmoi
+              echo "[data.git]" > ~/.config/chezmoi/chezmoi.toml
+              echo "  email = \"test@example.com\"" >> ~/.config/chezmoi/chezmoi.toml
+              echo "  name = \"Test User\"" >> ~/.config/chezmoi/chezmoi.toml
+              echo "[data.packages]" >> ~/.config/chezmoi/chezmoi.toml
+              echo "  runInstalls = false" >> ~/.config/chezmoi/chezmoi.toml
+              chezmoi init --source=/tmp/dotfiles --apply --force
+              echo "Verifying generated shell config files..."
+              for f in \
+                ~/.config/fish/functions/is-darwin.fish \
+                ~/.config/fish/functions/is-linux.fish \
+                ~/.config/fish/conf.d/00-path.fish \
+                ~/.config/zsh/.zfunctions/is-darwin \
+                ~/.config/zsh/.zfunctions/is-linux \
+                ~/.config/zsh/.zshrc.d/00-path.zsh; do
+                test -f "$f" || { echo "Missing generated file: $f"; exit 1; }
+              done
+              echo "All generated shell files present."'

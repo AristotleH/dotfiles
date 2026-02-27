@@ -146,14 +146,14 @@ Files are merged in the order given. If two sources define a function or module 
 
 ```bash
 # Edit the manifest
-vim .pkgmgmt/shell.yaml
+vim .shellgen/shell.yaml
 
 # Test (generates to temp dir, validates output)
-cd .pkgmgmt && make test
+cd .shellgen && make test
 
 # Generate to source dir (for local testing only)
-make generate-shell
+cd .shellgen && make generate
 
 # Generate to ~/.config (what chezmoi apply does)
-make generate-shell-target
+cd .shellgen && make generate-target
 ```
