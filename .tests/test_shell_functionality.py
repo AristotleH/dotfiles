@@ -2,9 +2,13 @@
 """
 Functionality tests for generated shell configuration files.
 
-Runs inside a Linux environment (Docker container or CI) after chezmoi apply.
 Tests that generated shell configs actually work when loaded and executed,
 not just that the files exist.
+
+Platform-aware assertions adapt to the host OS:
+  - Linux: is-linux true, is-darwin false
+  - macOS: is-linux false, is-darwin true
+  - other: both false
 
 Supports two modes:
   - With a config dir argument: test files in that directory
@@ -13,7 +17,6 @@ Supports two modes:
 Run with: python3 .tests/test_shell_functionality.py [config_dir]
 """
 
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -62,6 +65,16 @@ def run_shell(shell, command, timeout=10):
     return result.returncode, result.stdout.strip(), result.stderr.strip()
 
 
+def _expected_is_linux_result():
+    """Return expected success marker ('0' true, '1' false) for is-linux."""
+    return "0" if sys.platform.startswith("linux") else "1"
+
+
+def _expected_is_darwin_result():
+    """Return expected success marker ('0' true, '1' false) for is-darwin."""
+    return "0" if sys.platform == "darwin" else "1"
+
+
 # ---------------------------------------------------------------------------
 # Fish tests
 # ---------------------------------------------------------------------------
@@ -83,25 +96,27 @@ def test_fish_syntax():
 
 
 def test_fish_is_linux():
-    """Fish is-linux function should return 0 on Linux."""
+    """Fish is-linux function should match host OS."""
     func = FISH_FUNCS / "is-linux.fish"
     if not func.exists():
         return
     rc, out, err = run_shell(
         "fish", f"source {func}; is-linux; echo $status"
     )
-    assert out == "0", f"is-linux should return 0 on Linux, got status {out}"
+    expected = _expected_is_linux_result()
+    assert out == expected, f"is-linux expected status {expected}, got status {out}"
 
 
 def test_fish_is_darwin():
-    """Fish is-darwin function should return non-0 on Linux."""
+    """Fish is-darwin function should match host OS."""
     func = FISH_FUNCS / "is-darwin.fish"
     if not func.exists():
         return
     rc, out, err = run_shell(
         "fish", f"source {func}; is-darwin; echo $status"
     )
-    assert out != "0", f"is-darwin should return non-0 on Linux, got status {out}"
+    expected = _expected_is_darwin_result()
+    assert out == expected, f"is-darwin expected status {expected}, got status {out}"
 
 
 def test_fish_in_dir():
@@ -149,7 +164,7 @@ def test_zsh_syntax():
 
 
 def test_zsh_is_linux():
-    """Zsh is-linux function should return 0 on Linux."""
+    """Zsh is-linux function should match host OS."""
     func_dir = ZSH_FUNCS
     if not (func_dir / "is-linux").exists():
         return
@@ -158,11 +173,12 @@ def test_zsh_is_linux():
         f'fpath=({func_dir} $fpath); autoload -Uz is-linux; '
         f'is-linux && echo 0 || echo 1'
     )
-    assert out == "0", f"is-linux should return 0 on Linux, got: {out}"
+    expected = _expected_is_linux_result()
+    assert out == expected, f"is-linux expected {expected}, got: {out}"
 
 
 def test_zsh_is_darwin():
-    """Zsh is-darwin function should return non-0 on Linux."""
+    """Zsh is-darwin function should match host OS."""
     func_dir = ZSH_FUNCS
     if not (func_dir / "is-darwin").exists():
         return
@@ -171,7 +187,8 @@ def test_zsh_is_darwin():
         f'fpath=({func_dir} $fpath); autoload -Uz is-darwin; '
         f'is-darwin && echo 0 || echo 1'
     )
-    assert out == "1", f"is-darwin should return 1 on Linux, got: {out}"
+    expected = _expected_is_darwin_result()
+    assert out == expected, f"is-darwin expected {expected}, got: {out}"
 
 
 def test_zsh_in_dir():
@@ -221,7 +238,7 @@ def test_bash_syntax():
 
 
 def test_bash_is_linux():
-    """Bash is-linux function should return 0 on Linux."""
+    """Bash is-linux function should match host OS."""
     func = BASH_FUNCS / "is-linux.bash"
     if not func.exists():
         return
@@ -229,11 +246,12 @@ def test_bash_is_linux():
         "bash",
         f'source {func}; is-linux && echo 0 || echo 1'
     )
-    assert out == "0", f"is-linux should return 0 on Linux, got: {out}"
+    expected = _expected_is_linux_result()
+    assert out == expected, f"is-linux expected {expected}, got: {out}"
 
 
 def test_bash_is_darwin():
-    """Bash is-darwin function should return non-0 on Linux."""
+    """Bash is-darwin function should match host OS."""
     func = BASH_FUNCS / "is-darwin.bash"
     if not func.exists():
         return
@@ -241,7 +259,8 @@ def test_bash_is_darwin():
         "bash",
         f'source {func}; is-darwin && echo 0 || echo 1'
     )
-    assert out == "1", f"is-darwin should return 1 on Linux, got: {out}"
+    expected = _expected_is_darwin_result()
+    assert out == expected, f"is-darwin expected {expected}, got: {out}"
 
 
 def test_bash_in_dir():

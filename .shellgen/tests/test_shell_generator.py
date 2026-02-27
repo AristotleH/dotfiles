@@ -1154,6 +1154,39 @@ def test_validate_all_any_guard_bad_shape():
     assert any("'any' guard must be a non-empty list" in e for e in errors)
 
 
+def test_validate_guard_dict_multiple_keys_rejected():
+    """Validation rejects ambiguous guard dicts with multiple keys."""
+    manifest = {"modules": [
+        {"name": "bad", "prefix": "99", "description": "test",
+         "guard": {"command_exists": "git", "env_set": "HOME"},
+         "body": {"shared": "echo ok"}}
+    ]}
+    errors = validate_manifest(manifest)
+    assert any("guard dict must have exactly one key" in e for e in errors)
+
+
+def test_validate_env_equals_guard_missing_value_key():
+    """Validation rejects env_equals guard when var/value fields are incomplete."""
+    manifest = {"modules": [
+        {"name": "bad", "prefix": "99", "description": "test",
+         "guard": {"env_equals": {"var": "EDITOR"}},
+         "body": {"shared": "echo ok"}}
+    ]}
+    errors = validate_manifest(manifest)
+    assert any("guard 'env_equals' missing keys: value" in e for e in errors)
+
+
+def test_validate_value_less_guard_rejects_payload():
+    """Validation rejects payload values for value-less guards."""
+    manifest = {"modules": [
+        {"name": "bad", "prefix": "99", "description": "test",
+         "guard": {"is_interactive": "yes"},
+         "body": {"shared": "echo ok"}}
+    ]}
+    errors = validate_manifest(manifest)
+    assert any("guard 'is_interactive' does not take a value" in e for e in errors)
+
+
 def test_validate_body_shorthands():
     """Validation accepts body string shorthand and posix fallback key."""
     manifest = {

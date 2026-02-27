@@ -225,6 +225,22 @@ PREDICATES = {
 # All recognized guard keys (for validation)
 ALL_GUARD_KEYS = set(GUARDS.keys()) | {"not", "all", "any"}
 
+# Guard value-shape requirements for dict-form guards.
+# "none": no value payload allowed (bool true/None tolerated for YAML ergonomics)
+# "scalar": single scalar value (string/number)
+# "var_value": object with {"var": <scalar>, "value": <scalar>}
+GUARD_VALUE_KINDS = {
+    "command_exists": "scalar",
+    "env_not_set": "scalar",
+    "env_set": "scalar",
+    "env_equals": "var_value",
+    "not_env_equals": "var_value",
+    "is_tty": "none",
+    "is_interactive": "none",
+    "file_exists": "scalar",
+    "dir_exists": "scalar",
+}
+
 
 # ---------------------------------------------------------------------------
 # Validation
@@ -417,6 +433,9 @@ def _validate_guard(guard: Any, ctx: str, errors: List[str]):
                 f"(known: {', '.join(sorted(ALL_GUARD_KEYS))})"
             )
     elif isinstance(guard, dict):
+        if len(guard) != 1:
+            errors.append(f"{ctx}: guard dict must have exactly one key")
+            return
         key = next(iter(guard), None)
         if key == "not":
             # Recursive: validate inner guard
@@ -434,8 +453,60 @@ def _validate_guard(guard: Any, ctx: str, errors: List[str]):
                 f"{ctx}: unknown guard type '{key}' "
                 f"(known: {', '.join(sorted(ALL_GUARD_KEYS))})"
             )
+        else:
+            _validate_guard_value(key, guard[key], ctx, errors)
     else:
         errors.append(f"{ctx}: invalid guard type: {type(guard)}")
+
+
+def _validate_guard_value(key: str, value: Any, ctx: str, errors: List[str]):
+    """Validate the value shape for a recognized dict-form guard."""
+    kind = GUARD_VALUE_KINDS.get(key)
+    if kind is None:
+        return
+
+    scalar_types = (str, int, float)
+
+    if kind == "none":
+        if value not in (None, True):
+            errors.append(
+                f"{ctx}: guard '{key}' does not take a value "
+                f"(use string form '{key}')"
+            )
+        return
+
+    if kind == "scalar":
+        if not isinstance(value, scalar_types):
+            errors.append(
+                f"{ctx}: guard '{key}' must have a scalar value"
+            )
+        return
+
+    if kind == "var_value":
+        if not isinstance(value, dict):
+            errors.append(
+                f"{ctx}: guard '{key}' must be an object with 'var' and 'value'"
+            )
+            return
+
+        expected = {"var", "value"}
+        actual = set(value.keys())
+        missing = sorted(expected - actual)
+        extra = sorted(actual - expected)
+        if missing:
+            errors.append(
+                f"{ctx}: guard '{key}' missing keys: {', '.join(missing)}"
+            )
+        if extra:
+            errors.append(
+                f"{ctx}: guard '{key}' has unknown keys: {', '.join(extra)}"
+            )
+
+        for req in expected & actual:
+            if not isinstance(value[req], scalar_types):
+                errors.append(
+                    f"{ctx}: guard '{key}' field '{req}' must be a scalar"
+                )
 
 
 # ---------------------------------------------------------------------------

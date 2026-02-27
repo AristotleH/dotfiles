@@ -11,6 +11,9 @@ on:
       - 'dot_config/fish/**'
       - 'dot_config/bash/**'
       - 'dot_config/powershell/**'
+      - 'dot_bashrc'
+      - 'dot_bash_profile'
+      - 'private_Documents/private_PowerShell/**'
   pull_request:
     paths:
       - '.tests/**'
@@ -21,6 +24,9 @@ on:
       - 'dot_config/fish/**'
       - 'dot_config/bash/**'
       - 'dot_config/powershell/**'
+      - 'dot_bashrc'
+      - 'dot_bash_profile'
+      - 'private_Documents/private_PowerShell/**'
 
 jobs:
   shell-config:
