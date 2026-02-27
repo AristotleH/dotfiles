@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-This is a chezmoi-managed dotfiles repository supporting macOS, Linux (Debian/Ubuntu, Arch, Fedora), and Windows (MSYS2). It features dual shell support (Fish with Tide, Zsh with Powerlevel10k), a shell config generator, and an optional package management system.
+This is a chezmoi-managed dotfiles repository supporting macOS, Linux (Debian/Ubuntu, Arch, Fedora), and Windows (MSYS2). It features four-shell support (Fish, Zsh, Bash, PowerShell) via a YAML-to-shell transpiler, and an optional package management system.
 
 ## Common Commands
 
@@ -67,11 +67,11 @@ chezmoi update    # Pull and apply latest
 
 ## Architecture
 
-### Shell Config Generator (.shellgen/)
+### Shell Config Transpiler (.shellgen/)
 
-Central manifest (`shell.yaml`) → Generator (`generate_shell.py`) → Shell-specific files for both Fish and Zsh.
+Central manifest (`shell.yaml`) → Transpiler (`generate_shell.py`) → Shell-specific files for Fish, Zsh, Bash, and PowerShell.
 
-The generator is idempotent and produces matching configurations for both shells from a single YAML source.
+The transpiler is idempotent and produces matching configurations for all four shells from a single YAML source. It supports high-level constructs (env vars, aliases, conditionals, guards, tool init, source files) that are translated into idiomatic syntax for each target shell. See `.shellgen/SHELL.md` for the full DSL specification.
 
 ### Package Management System (.pkgmgmt/)
 
@@ -94,7 +94,11 @@ Package auto-install is off by default (`packages.runInstalls = false` in chezmo
 
 **Zsh** (`dot_config/zsh/`): `.zshrc` sources `.zshrc.d/*.zsh`, functions in `.zfunctions/`, plugins via Antidote (`.zsh_plugins.txt`)
 
-Both shells support local overrides: `config.local.fish` or `.zshrc.local` (not managed by chezmoi).
+**Bash** (`dot_config/bash/`): sources `bashrc.d/*.bash`, functions in `functions/`
+
+**PowerShell** (`dot_config/powershell/`): sources `conf.d/*.ps1`, functions in `functions/`
+
+All shells support local overrides (not managed by chezmoi).
 
 ### Test Organization
 

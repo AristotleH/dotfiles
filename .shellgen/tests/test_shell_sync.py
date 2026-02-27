@@ -2,8 +2,8 @@
 """
 Test that generate_shell.py produces the expected files in a temp directory.
 
-Validates that the generator creates all expected files with the correct
-header and content, without touching the chezmoi source tree.
+Validates that the generator creates all expected files for all 4 shells
+with the correct header and content, without touching the chezmoi source tree.
 """
 
 import sys
@@ -14,9 +14,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from generate_shell import (
     HEADER,
+    SHELLS,
+    SHELL_FUNC_EXT,
+    SHELL_MODULE_EXT,
     generate_all,
     generate_function,
     generate_module,
+    get_output_dirs,
     load_manifest,
     validate_manifest,
 )
@@ -25,7 +29,7 @@ from generate_shell import (
 def test_generate_to_tempdir():
     """
     Generate shell files to a temp dir and verify:
-    - All expected files are created
+    - All expected files for all 4 shells are created
     - All start with HEADER
     - Content matches generate_function/generate_module output
     """
@@ -54,19 +58,24 @@ def test_generate_to_tempdir():
         target = Path(tmpdir)
         repo_root = script_dir.parent
         generated = generate_all(manifest, target, repo_root)
+        dirs = get_output_dirs(target, repo_root)
 
         # Build expected file list
         expected_files = []
         for func in manifest.get("functions", []):
             name = func["name"]
-            expected_files.append(target / "fish" / "functions" / f"{name}.fish")
-            expected_files.append(target / "zsh" / ".zfunctions" / name)
+            for shell in SHELLS:
+                func_ext = SHELL_FUNC_EXT[shell]
+                func_dir = dirs[shell]["functions"]
+                expected_files.append(func_dir / f"{name}{func_ext}")
 
         for mod in manifest.get("modules", []):
             name = mod["name"]
             prefix = mod["prefix"]
-            expected_files.append(target / "fish" / "conf.d" / f"{prefix}-{name}.fish")
-            expected_files.append(target / "zsh" / ".zshrc.d" / f"{prefix}-{name}.zsh")
+            for shell in SHELLS:
+                mod_ext = SHELL_MODULE_EXT[shell]
+                mod_dir = dirs[shell]["modules"]
+                expected_files.append(mod_dir / f"{prefix}-{name}{mod_ext}")
 
         # Check all expected files were created
         missing = [f for f in expected_files if not f.exists()]
@@ -96,30 +105,35 @@ def test_generate_to_tempdir():
         # Verify content matches generator output
         for func in manifest.get("functions", []):
             name = func["name"]
-            for shell, path in [
-                ("fish", target / "fish" / "functions" / f"{name}.fish"),
-                ("zsh", target / "zsh" / ".zfunctions" / name),
-            ]:
+            for shell in SHELLS:
+                func_ext = SHELL_FUNC_EXT[shell]
+                func_dir = dirs[shell]["functions"]
+                path = func_dir / f"{name}{func_ext}"
                 expected = generate_function(func, shell)
                 actual = path.read_text()
                 if actual != expected:
                     print(f"Content mismatch: {path.name} ({shell})")
+                    print(f"  Expected:\n{expected[:200]}")
+                    print(f"  Actual:\n{actual[:200]}")
                     return False
 
         for mod in manifest.get("modules", []):
             name = mod["name"]
             prefix = mod["prefix"]
-            for shell, path in [
-                ("fish", target / "fish" / "conf.d" / f"{prefix}-{name}.fish"),
-                ("zsh", target / "zsh" / ".zshrc.d" / f"{prefix}-{name}.zsh"),
-            ]:
+            for shell in SHELLS:
+                mod_ext = SHELL_MODULE_EXT[shell]
+                mod_dir = dirs[shell]["modules"]
+                path = mod_dir / f"{prefix}-{name}{mod_ext}"
                 expected = generate_module(mod, shell)
                 actual = path.read_text()
                 if actual != expected:
                     print(f"Content mismatch: {path.name} ({shell})")
+                    print(f"  Expected:\n{expected[:200]}")
+                    print(f"  Actual:\n{actual[:200]}")
                     return False
 
-    print(f"All {len(expected_files)} generated shell files verified in temp dir")
+    print(f"All {len(expected_files)} generated shell files verified in temp dir "
+          f"({len(SHELLS)} shells)")
     return True
 
 

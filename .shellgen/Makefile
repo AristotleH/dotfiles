@@ -3,10 +3,10 @@
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
-generate:  ## Generate shell configs (to chezmoi source dir)
+generate:  ## Generate shell configs for all 4 shells (to chezmoi source dir)
 	@python3 generate_shell.py
 
-generate-target:  ## Generate shell configs to ~/.config (like chezmoi apply)
+generate-target:  ## Generate shell configs for all 4 shells to ~/.config (like chezmoi apply)
 	@python3 generate_shell.py --target ~/.config shell.yaml ~/.config/shell.d
 
 test:  ## Run all shell generator tests

@@ -8,6 +8,8 @@ on:
       - '.chezmoiscripts/**'
       - 'dot_config/zsh/**'
       - 'dot_config/fish/**'
+      - 'dot_config/bash/**'
+      - 'dot_config/powershell/**'
   pull_request:
     paths:
       - '.tests/**'
@@ -15,6 +17,8 @@ on:
       - '.chezmoiscripts/**'
       - 'dot_config/zsh/**'
       - 'dot_config/fish/**'
+      - 'dot_config/bash/**'
+      - 'dot_config/powershell/**'
 
 jobs:
   shell-config:
@@ -98,7 +102,13 @@ jobs:
                 ~/.config/fish/conf.d/00-path.fish \
                 ~/.config/zsh/.zfunctions/is-darwin \
                 ~/.config/zsh/.zfunctions/is-linux \
-                ~/.config/zsh/.zshrc.d/00-path.zsh; do
+                ~/.config/zsh/.zshrc.d/00-path.zsh \
+                ~/.config/bash/functions/is-darwin.bash \
+                ~/.config/bash/functions/is-linux.bash \
+                ~/.config/bash/bashrc.d/00-path.bash \
+                ~/.config/powershell/functions/is-darwin.ps1 \
+                ~/.config/powershell/functions/is-linux.ps1 \
+                ~/.config/powershell/conf.d/00-path.ps1; do
                 test -f "$f" || { echo "Missing generated file: $f"; exit 1; }
               done
               echo "All generated shell files present."'
