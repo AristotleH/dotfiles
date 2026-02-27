@@ -189,7 +189,7 @@ functions:
         param(
             [Parameter(Mandatory)][string]$Directory,
             [Parameter(Mandatory)][string]$Command,
-            [Parameter(ValueFromRemainingArguments)][string[]]$Arguments
+            [Parameter(ValueFromRemainingArguments)][string[]]$Arguments = @()
         )
         if (-not (Test-Path $Directory)) {
             Write-Error "in_dir: cannot access directory: $Directory"
