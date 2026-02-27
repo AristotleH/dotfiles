@@ -77,11 +77,15 @@ jobs:
               cp -r /dotfiles-src /tmp/dotfiles
               echo "🔧 Pre-configuring chezmoi..."
               mkdir -p ~/.config/chezmoi
-              echo "[data.git]" > ~/.config/chezmoi/chezmoi.toml
-              echo "  email = \"test@example.com\"" >> ~/.config/chezmoi/chezmoi.toml
-              echo "  name = \"Test User\"" >> ~/.config/chezmoi/chezmoi.toml
-              echo "[data.packages]" >> ~/.config/chezmoi/chezmoi.toml
-              echo "  runInstalls = false" >> ~/.config/chezmoi/chezmoi.toml
+              cat > ~/.config/chezmoi/chezmoi.toml << "CFGEOF"
+          [data.git]
+            email = "test@example.com"
+            name = "Test User"
+          [data.packages]
+            runInstalls = false
+          [data.shell]
+            extraManifests = ""
+          CFGEOF
               echo "🔧 Initializing chezmoi..."
               chezmoi init --source=/tmp/dotfiles --apply --force
               echo "📋 Checking chezmoi status..."

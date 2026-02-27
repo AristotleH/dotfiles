@@ -1,6 +1,7 @@
 {{ $email := promptStringOnce . "git.email" "git email" }}
 {{ $name := promptStringOnce . "git.name" "git name" }}
 {{ $runInstalls := false }}{{/* Package auto-install disabled by default */}}
+{{ $extraManifests := promptStringOnce . "shell.extraManifests" "extra shell.yaml paths (comma-separated, or empty)" }}
 
 [data.git]
     email = {{ $email | quote }}
@@ -8,6 +9,9 @@
 
 [data.packages]
     runInstalls = {{ $runInstalls }}
+
+[data.shell]
+    extraManifests = {{ $extraManifests | quote }}
 
 # Platform detection
 [data.platform]

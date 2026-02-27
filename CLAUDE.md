@@ -29,6 +29,12 @@ python3 .tests/test_zsh.py
 
 # Run fish config tests
 python3 .tests/test_fish.py
+
+# Run shell functionality tests (inside Docker or after chezmoi apply)
+python3 .tests/test_shell_functionality.py [config_dir]
+
+# Run Windows shell functionality tests (pwsh + Git Bash)
+python3 .tests/test_shell_functionality_windows.py <config_dir>
 ```
 
 ### Package Management (optional)
@@ -100,9 +106,15 @@ Package auto-install is off by default (`packages.runInstalls = false` in chezmo
 
 All shells support local overrides (not managed by chezmoi).
 
+### Per-Machine Shell Customization
+
+During `chezmoi init`, you can specify additional `shell.yaml` paths (comma-separated) that get merged into the generation process. Later files override earlier ones. The `~/.config/shell.d/` directory is also auto-discovered.
+
 ### Test Organization
 
-- `.tests/` — Dotfiles validation (zsh/fish config structure, conventions)
+- `.tests/` — Dotfiles validation (zsh/fish config structure, conventions, functionality)
+- `.tests/test_shell_functionality.py` — Linux: executes generated configs in fish/zsh/bash
+- `.tests/test_shell_functionality_windows.py` — Windows: executes generated configs in pwsh/bash
 - `.shellgen/tests/` — Shell generator unit + sync tests
 - `.pkgmgmt/tests/` — Package generator unit + sync tests
 
@@ -110,7 +122,7 @@ All shells support local overrides (not managed by chezmoi).
 
 Two GitHub Actions workflows:
 
-**Dotfiles & Shell Tests** (`test-dotfiles.yml`): Runs on changes to `.tests/`, `.shellgen/`, or shell config files.
+**Dotfiles & Shell Tests** (`test-dotfiles.yml`): Runs on changes to `.tests/`, `.shellgen/`, or shell config files. Includes Linux Docker integration test (chezmoi apply + functionality testing) and Windows shell tests (pwsh + Git Bash).
 
 **Package Management Tests** (`test-packages.yml`): Runs on changes to `.pkgmgmt/` or package files. Includes Debian Docker integration test and macOS Brewfile validation.
 

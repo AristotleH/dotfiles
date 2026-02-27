@@ -85,6 +85,9 @@ if [ "$REPO_SOURCE" = "local" ]; then
 
 [data.packages]
   runInstalls = false
+
+[data.shell]
+  extraManifests = ""
 CFGEOF
 
             echo ""
@@ -123,6 +126,9 @@ else
 
 [data.packages]
   runInstalls = false
+
+[data.shell]
+  extraManifests = \"\"
 CFGEOF
 
             echo ''

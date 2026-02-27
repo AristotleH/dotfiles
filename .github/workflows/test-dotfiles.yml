@@ -89,11 +89,15 @@ jobs:
             bash -c 'set -e
               cp -r /dotfiles-src /tmp/dotfiles
               mkdir -p ~/.config/chezmoi
-              echo "[data.git]" > ~/.config/chezmoi/chezmoi.toml
-              echo "  email = \"test@example.com\"" >> ~/.config/chezmoi/chezmoi.toml
-              echo "  name = \"Test User\"" >> ~/.config/chezmoi/chezmoi.toml
-              echo "[data.packages]" >> ~/.config/chezmoi/chezmoi.toml
-              echo "  runInstalls = false" >> ~/.config/chezmoi/chezmoi.toml
+              cat > ~/.config/chezmoi/chezmoi.toml << "CFGEOF"
+          [data.git]
+            email = "test@example.com"
+            name = "Test User"
+          [data.packages]
+            runInstalls = false
+          [data.shell]
+            extraManifests = ""
+          CFGEOF
               chezmoi init --source=/tmp/dotfiles --apply --force
               echo "Verifying generated shell config files..."
               for f in \
@@ -112,3 +116,52 @@ jobs:
                 test -f "$f" || { echo "Missing generated file: $f"; exit 1; }
               done
               echo "All generated shell files present."'
+
+      - name: Test generated shell files actually work
+        run: |
+          docker run --rm \
+            -v "$PWD:/dotfiles-src:ro" \
+            chezmoi-test-debian:latest \
+            bash -c 'set -e
+              cp -r /dotfiles-src /tmp/dotfiles
+              mkdir -p ~/.config/chezmoi
+              cat > ~/.config/chezmoi/chezmoi.toml << "CFGEOF"
+          [data.git]
+            email = "test@example.com"
+            name = "Test User"
+          [data.packages]
+            runInstalls = false
+          [data.shell]
+            extraManifests = ""
+          CFGEOF
+              chezmoi init --source=/tmp/dotfiles --apply --force
+              echo "Running shell functionality tests..."
+              python3 /dotfiles-src/.tests/test_shell_functionality.py'
+
+  windows-test:
+    name: Windows Shell Tests (pwsh + Git Bash)
+    runs-on: windows-latest
+    needs: [shell-config, shell-generator]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Generate shell configs to temp dir
+        run: |
+          $targetDir = Join-Path $env:RUNNER_TEMP "shelltest"
+          python3 .shellgen/generate_shell.py --target $targetDir .shellgen/shell.yaml
+        shell: pwsh
+
+      - name: Run Windows functionality tests
+        run: |
+          $targetDir = Join-Path $env:RUNNER_TEMP "shelltest"
+          python3 .tests/test_shell_functionality_windows.py $targetDir
+        shell: pwsh

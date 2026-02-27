@@ -1,6 +1,8 @@
 #!/bin/sh
 # Generate shell config files from shell.yaml after chezmoi apply.
-# Supports per-machine customization via ~/.config/shell.d/*.yaml
+# Supports per-machine customization via:
+#   1. Extra manifest paths configured during chezmoi init (comma-separated)
+#   2. ~/.config/shell.d/*.yaml directory (auto-discovered)
 
 set -e
 
@@ -34,4 +36,25 @@ fi
 
 EXTRA_DIR="{{ .chezmoi.homeDir }}/.config/shell.d"
 
-"$PYTHON3" "$GENERATOR" --target "{{ .chezmoi.homeDir }}/.config" "$CHEZMOI_SRC/.shellgen/shell.yaml" "$EXTRA_DIR"
+# Build source arguments: main manifest, then any extra manifests from config,
+# then the shell.d directory. Merge order is left-to-right (last wins).
+SOURCES="$CHEZMOI_SRC/.shellgen/shell.yaml"
+
+EXTRA_MANIFESTS="{{ .shell.extraManifests }}"
+if [ -n "$EXTRA_MANIFESTS" ]; then
+    # Split comma-separated paths and add existing files
+    OLD_IFS="$IFS"
+    IFS=','
+    for p in $EXTRA_MANIFESTS; do
+        # Trim whitespace
+        p="$(echo "$p" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+        if [ -n "$p" ] && [ -e "$p" ]; then
+            SOURCES="$SOURCES $p"
+        fi
+    done
+    IFS="$OLD_IFS"
+fi
+
+SOURCES="$SOURCES $EXTRA_DIR"
+
+"$PYTHON3" "$GENERATOR" --target "{{ .chezmoi.homeDir }}/.config" $SOURCES
