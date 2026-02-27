@@ -800,7 +800,7 @@ def merge_manifests(base: Dict, extra: Dict) -> Dict:
     return merged
 
 
-def resolve_sources(paths: List[str]) -> List[Path]:
+def resolve_sources(paths: List[str], quiet: bool = False) -> List[Path]:
     """Resolve a list of path strings to YAML file paths.
 
     Each path is resolved as:
@@ -818,9 +818,11 @@ def resolve_sources(paths: List[str]) -> List[Path]:
             if yaml_path.is_file():
                 resolved.append(yaml_path)
             else:
-                warnings.warn(f"No shell.yaml found in directory: {path}")
+                if not quiet:
+                    warnings.warn(f"No shell.yaml found in directory: {path}")
         else:
-            warnings.warn(f"Source path does not exist, skipping: {path}")
+            if not quiet:
+                warnings.warn(f"Source path does not exist, skipping: {path}")
     return resolved
 
 
@@ -894,7 +896,7 @@ def _write_gitignore(directory: Path, filenames: List[str]):
 
 
 def generate_all(manifest: Dict, target: Optional[Path],
-                 repo_root: Path) -> List[Path]:
+                 repo_root: Path, quiet: bool = False) -> List[Path]:
     """Generate all shell config files and return list of written paths."""
     dirs = get_output_dirs(target, repo_root)
 
@@ -922,7 +924,8 @@ def generate_all(manifest: Dict, target: Optional[Path],
             func_path.write_text(generate_function(func, shell))
             generated_files.append(func_path)
             dir_files[func_dir].append(filename)
-            print(f"  {func_path}")
+            if not quiet:
+                print(f"  {func_path}")
 
     # --- Modules ---
     for mod in manifest.get("modules", []):
@@ -937,7 +940,8 @@ def generate_all(manifest: Dict, target: Optional[Path],
             mod_path.write_text(generate_module(mod, shell))
             generated_files.append(mod_path)
             dir_files[mod_dir].append(filename)
-            print(f"  {mod_path}")
+            if not quiet:
+                print(f"  {mod_path}")
 
     # Write per-directory .gitignore files
     for d, names in dir_files.items():
@@ -963,6 +967,9 @@ def main():
         "--target", type=Path, default=None,
         help="Write to real config paths under DIR (e.g. ~/.config). "
              "Without this flag, writes to chezmoi source dir.")
+    parser.add_argument(
+        "--quiet", action="store_true",
+        help="Suppress non-error output.")
     args = parser.parse_args()
 
     script_dir = Path(__file__).parent
@@ -981,7 +988,7 @@ def main():
     if not raw_sources:
         raw_sources = [str(script_dir / "shell.yaml")]
 
-    source_files = resolve_sources(raw_sources)
+    source_files = resolve_sources(raw_sources, quiet=args.quiet)
     if not source_files:
         print("Error: no valid source files found")
         return 1
@@ -1000,9 +1007,11 @@ def main():
             print(f"  - {err}")
         return 1
 
-    generated_files = generate_all(manifest, args.target, repo_root)
-    print(f"\nGenerated {len(generated_files)} shell config files "
-          f"for {len(SHELLS)} shells.")
+    generated_files = generate_all(manifest, args.target, repo_root,
+                                   quiet=args.quiet)
+    if not args.quiet:
+        print(f"\nGenerated {len(generated_files)} shell config files "
+              f"for {len(SHELLS)} shells.")
     return 0
 
 

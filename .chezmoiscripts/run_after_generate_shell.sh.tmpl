@@ -38,7 +38,7 @@ EXTRA_DIR="{{ .chezmoi.homeDir }}/.config/shell.d"
 
 # Build source arguments: main manifest, then any extra manifests from config,
 # then the shell.d directory. Merge order is left-to-right (last wins).
-SOURCES="$CHEZMOI_SRC/.shellgen/shell.yaml"
+set -- "$CHEZMOI_SRC/.shellgen/shell.yaml"
 
 EXTRA_MANIFESTS="{{ .shell.extraManifests }}"
 if [ -n "$EXTRA_MANIFESTS" ]; then
@@ -49,12 +49,14 @@ if [ -n "$EXTRA_MANIFESTS" ]; then
         # Trim whitespace
         p="$(echo "$p" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
         if [ -n "$p" ] && [ -e "$p" ]; then
-            SOURCES="$SOURCES $p"
+            set -- "$@" "$p"
         fi
     done
     IFS="$OLD_IFS"
 fi
 
-SOURCES="$SOURCES $EXTRA_DIR"
+if [ -d "$EXTRA_DIR" ]; then
+    set -- "$@" "$EXTRA_DIR"
+fi
 
-"$PYTHON3" "$GENERATOR" --target "{{ .chezmoi.homeDir }}/.config" $SOURCES
+"$PYTHON3" "$GENERATOR" --quiet --target "{{ .chezmoi.homeDir }}/.config" "$@"
