@@ -3,3 +3,4 @@
 40-eza.zsh
 50-zoxide.zsh
 70-tmux.zsh
+80-prompt.zsh

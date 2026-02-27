@@ -1,8 +1,21 @@
-function fish_prompt
-end # In case this file gets loaded non-interactively, e.g by conda
 status is-interactive || exit
-# Guard: tide must be installed (via fisher) for this prompt to work
-functions -q _tide_remove_unusable_items || exit
+
+# Offline/plugin fallback: use a simple prompt only when tide is unavailable.
+if not functions -q _tide_remove_unusable_items
+    function fish_prompt
+        set -l last_status $status
+        set_color blue
+        echo -n (prompt_pwd)
+        set_color normal
+        if test $last_status -ne 0
+            set_color red
+            echo -n " [$last_status]"
+            set_color normal
+        end
+        echo -n " ❯ "
+    end
+    exit
+end
 
 _tide_remove_unusable_items
 _tide_cache_variables

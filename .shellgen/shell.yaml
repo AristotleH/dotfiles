@@ -249,3 +249,108 @@ modules:
     body:
       shared: |
         tmux attach 2>/dev/null || tmux new-session
+
+  - name: prompt
+    prefix: "80"
+    description: Interactive shell prompt
+    comment: Bash and PowerShell get a status-aware prompt with git branch
+    guard: is_interactive
+    body:
+      fish: |
+        # Prompt is managed in functions/fish_prompt.fish.
+      zsh: |
+        # Prompt is managed by powerlevel10k (or fallback in dot_zshrc).
+      bash: |
+        if [[ -n "${__DOT_PROMPT_INITIALIZED:-}" ]]; then
+            return 0
+        fi
+        __DOT_PROMPT_INITIALIZED=1
+        PROMPT_DIRTRIM=3
+        __dot_color_reset='\[\e[0m\]'
+        __dot_color_path='\[\e[34m\]'
+        __dot_color_branch='\[\e[33m\]'
+        __dot_color_status='\[\e[31m\]'
+
+        __dot_prompt_git_branch() {
+            command -v git &>/dev/null || return 0
+            local branch
+            branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || git rev-parse --short HEAD 2>/dev/null)" || return 0
+            if (( ${#branch} > 24 )); then
+                branch="${branch:0:21}..."
+            fi
+            printf " (%s)" "$branch"
+        }
+
+        __dot_prompt_precmd() {
+            local last_status=$?
+            local status_part=""
+            if [[ $last_status -ne 0 ]]; then
+                status_part="${__dot_color_status}[${last_status}] ${__dot_color_reset}"
+            fi
+
+            local branch
+            branch="$(__dot_prompt_git_branch)"
+            PS1="${status_part}${__dot_color_path}\w${__dot_color_reset}${__dot_color_branch}${branch}${__dot_color_reset} ❯ "
+        }
+
+        if [[ -n "${PROMPT_COMMAND:-}" ]]; then
+            PROMPT_COMMAND="__dot_prompt_precmd; ${PROMPT_COMMAND}"
+        else
+            PROMPT_COMMAND="__dot_prompt_precmd"
+        fi
+      pwsh: |
+        if ($global:__DotPromptInitialized) { return }
+        $global:__DotPromptInitialized = $true
+
+        if (Get-Variable PSStyle -Scope Global -ErrorAction SilentlyContinue) {
+            $global:__DotPromptColorRed = $PSStyle.Foreground.Red
+            $global:__DotPromptColorCyan = $PSStyle.Foreground.Cyan
+            $global:__DotPromptColorBlue = $PSStyle.Foreground.Blue
+            $global:__DotPromptColorYellow = $PSStyle.Foreground.Yellow
+            $global:__DotPromptColorReset = $PSStyle.Reset
+        } else {
+            $global:__DotPromptColorRed = ""
+            $global:__DotPromptColorCyan = ""
+            $global:__DotPromptColorBlue = ""
+            $global:__DotPromptColorYellow = ""
+            $global:__DotPromptColorReset = ""
+        }
+
+        function global:__DotPromptGitBranch {
+            if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return "" }
+            $branch = git symbolic-ref --quiet --short HEAD 2>$null
+            if (-not $branch) {
+                $branch = git rev-parse --short HEAD 2>$null
+            }
+            if ($branch -and $branch.Length -gt 24) {
+                $branch = $branch.Substring(0, 21) + "..."
+            }
+            if ($branch) { return " ($branch)" }
+            return ""
+        }
+
+        function global:__DotPromptPath {
+            $path = $executionContext.SessionState.Path.CurrentLocation.Path
+            if ($path.StartsWith($HOME)) {
+                $path = "~" + $path.Substring($HOME.Length)
+            }
+            $parts = $path -split '[\\/]'
+            if ($parts.Count -gt 4) {
+                return ".../" + ($parts[-3..-1] -join "/")
+            }
+            return ($parts -join "/")
+        }
+
+        function global:prompt {
+            $statusPart = ""
+            $nativeCode = if ($null -ne $LASTEXITCODE) { [int]$LASTEXITCODE } else { 0 }
+            if ((-not $?) -or ($nativeCode -ne 0)) {
+                $code = if ($nativeCode -ne 0) { $nativeCode } else { 1 }
+                $statusPart = "$($global:__DotPromptColorRed)[$code]$($global:__DotPromptColorReset) "
+            }
+
+            $path = __DotPromptPath
+            $branch = __DotPromptGitBranch
+
+            return "$statusPart$($global:__DotPromptColorBlue)$path$($global:__DotPromptColorReset)$($global:__DotPromptColorYellow)$branch$($global:__DotPromptColorReset) ❯ "
+        }

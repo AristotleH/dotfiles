@@ -12,9 +12,11 @@ fpath=($ZFUNCDIR $fpath)
 autoload -Uz $ZFUNCDIR/*(.:t)
 
 # Plugin Manager (Antidote)
-if [[ ! -d ${ZDOTDIR:-$HOME}/.antidote ]]; then
-  git clone https://github.com/mattmc3/antidote ${ZDOTDIR:-$HOME}/.antidote
-fi
+# Keep startup offline-safe: do not fetch from network during shell init.
+ANTIDOTE_HOME=${ZDOTDIR:-$HOME}/.antidote
+ANTIDOTE_SCRIPT=$ANTIDOTE_HOME/antidote.zsh
+ANTIDOTE_BUNDLE_FILE=${ZDOTDIR:-$HOME}/.zsh_plugins.txt
+ANTIDOTE_STATIC_FILE=${ZDOTDIR:-$HOME}/.zsh_plugins.zsh
 
 # zsh-autocomplete settings (must be set BEFORE the plugin loads)
 zstyle ':autocomplete:*' min-input 1              # Require at least 1 char before showing completions
@@ -25,8 +27,16 @@ zstyle ':autocomplete:history-search-backward:*' list-lines 2000
 zstyle ':autocomplete:*complete*:*' insert-unambiguous yes # Insert common substring first, then open menu
 
 # Load plugins
-source ${ZDOTDIR:-$HOME}/.antidote/antidote.zsh
-antidote load
+if [[ -r $ANTIDOTE_SCRIPT ]]; then
+  source "$ANTIDOTE_SCRIPT"
+  if [[ -r $ANTIDOTE_STATIC_FILE ]]; then
+    source "$ANTIDOTE_STATIC_FILE"
+  else
+    # First-run fallback: generate and load static plugins silently.
+    antidote load "$ANTIDOTE_BUNDLE_FILE" "$ANTIDOTE_STATIC_FILE" >/dev/null 2>&1
+  fi
+fi
+unset ANTIDOTE_HOME ANTIDOTE_SCRIPT ANTIDOTE_BUNDLE_FILE ANTIDOTE_STATIC_FILE
 
 # Modular Configuration
 for _rc in ${ZDOTDIR:-$HOME}/.zshrc.d/*.zsh; do
@@ -35,7 +45,11 @@ done
 unset _rc
 
 # Prompt (run `p10k configure` to customize)
-[[ ! -f ${ZDOTDIR:-$HOME}/.p10k.zsh ]] || source ${ZDOTDIR:-$HOME}/.p10k.zsh
+if (( $+functions[p10k] )); then
+  [[ ! -f ${ZDOTDIR:-$HOME}/.p10k.zsh ]] || source ${ZDOTDIR:-$HOME}/.p10k.zsh
+else
+  PROMPT='%F{blue}%1~%f %# '
+fi
 
 # Local overrides (not managed by chezmoi)
 [[ -f ${ZDOTDIR:-$HOME}/.zshrc.local ]] && source ${ZDOTDIR:-$HOME}/.zshrc.local

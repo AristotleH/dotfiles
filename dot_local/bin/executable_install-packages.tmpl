@@ -51,8 +51,24 @@ detect_platform() {
 {{- end }}
 }
 
+internet_available() {
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSLI --connect-timeout 2 --max-time 5 https://github.com >/dev/null 2>&1
+        return $?
+    fi
+    if command -v wget >/dev/null 2>&1; then
+        wget -q --spider --timeout=5 https://github.com >/dev/null 2>&1
+        return $?
+    fi
+    return 1
+}
+
 install_macos() {
     echo "Installing packages for macOS..."
+    if ! internet_available; then
+        echo "No internet connection detected. Skipping package installation."
+        return 0
+    fi
 
     # Check if Homebrew is installed
     if ! command -v brew >/dev/null 2>&1; then
@@ -81,13 +97,17 @@ install_macos() {
 
 install_msys2() {
     echo "Installing packages for MSYS2..."
+    if ! internet_available; then
+        echo "No internet connection detected. Skipping package installation."
+        return 0
+    fi
 
     if [ -z "$MSYSTEM" ]; then
         echo "Error: This must be run in an MSYS2 shell"
         exit 1
     fi
 
-    local pkg_file="$HOME/.config/packages-msys2.txt"
+    pkg_file="$HOME/.config/packages-msys2.txt"
     if [ -f "$pkg_file" ]; then
         packages=$(grep -v '^#' "$pkg_file" | grep -v '^$' | tr '\n' ' ')
         if [ -n "$packages" ]; then
@@ -108,8 +128,12 @@ install_msys2() {
 
 install_apt() {
     echo "Installing packages for APT-based system..."
+    if ! internet_available; then
+        echo "No internet connection detected. Skipping package installation."
+        return 0
+    fi
 
-    local pkg_file="$HOME/.config/packages-$1.txt"
+    pkg_file="$HOME/.config/packages-$1.txt"
     if [ -f "$pkg_file" ]; then
         echo "Updating package list..."
         sudo apt-get update
@@ -133,8 +157,12 @@ install_apt() {
 
 install_pacman() {
     echo "Installing packages for Pacman-based system..."
+    if ! internet_available; then
+        echo "No internet connection detected. Skipping package installation."
+        return 0
+    fi
 
-    local pkg_file="$HOME/.config/packages-pacman.txt"
+    pkg_file="$HOME/.config/packages-pacman.txt"
     if [ -f "$pkg_file" ]; then
         echo "Updating package database..."
         sudo pacman -Sy
@@ -158,8 +186,12 @@ install_pacman() {
 
 install_dnf() {
     echo "Installing packages for DNF-based system..."
+    if ! internet_available; then
+        echo "No internet connection detected. Skipping package installation."
+        return 0
+    fi
 
-    local pkg_file="$HOME/.config/packages-dnf.txt"
+    pkg_file="$HOME/.config/packages-dnf.txt"
     if [ -f "$pkg_file" ]; then
         packages=$(grep -v '^#' "$pkg_file" | grep -v '^$' | tr '\n' ' ')
         if [ -n "$packages" ]; then

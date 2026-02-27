@@ -38,6 +38,34 @@ install-packages
 
 This automatically detects your platform and installs the appropriate packages.
 
+### If You Cannot Install Chezmoi
+
+You can still use the shell setup directly from a clone of this repo:
+
+```bash
+git clone <this-repo-url> dotfiles
+cd dotfiles
+
+# Generate cross-shell config directly into ~/.config
+python3 .shellgen/generate_shell.py --target "$HOME/.config" .shellgen/shell.yaml "$HOME/.config/shell.d"
+
+# Bash entrypoints
+cp dot_bashrc "$HOME/.bashrc"
+cp dot_bash_profile "$HOME/.bash_profile"
+
+# PowerShell profile (pwsh)
+mkdir -p "$HOME/.config/powershell"
+cp dot_config/powershell/Microsoft.PowerShell_profile.ps1 "$HOME/.config/powershell/Microsoft.PowerShell_profile.ps1"
+```
+
+On Windows PowerShell, use the profile bridge path:
+
+```powershell
+New-Item -ItemType Directory -Force -Path "$HOME\\Documents\\PowerShell" | Out-Null
+Copy-Item private_Documents/private_PowerShell/Microsoft.PowerShell_profile.ps1 `
+  "$HOME\\Documents\\PowerShell\\Microsoft.PowerShell_profile.ps1" -Force
+```
+
 ## Package Management
 
 This setup includes a unified cross-platform package management system. Edit packages once in [`.pkgmgmt/packages.yaml`](.pkgmgmt/packages.yaml), then generate platform-specific files.

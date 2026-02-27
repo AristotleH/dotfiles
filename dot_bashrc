@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+
+# macOS Bash deprecation banner suppression.
+if [[ "$OSTYPE" == darwin* ]]; then
+    export BASH_SILENCE_DEPRECATION_WARNING=1
+fi
+
+# XDG-compatible Bash config root.
+BASH_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/bash"
+
+# Load shell functions first so modules can use them.
+for _bash_func in "$BASH_CONFIG_DIR"/functions/*.bash; do
+    [ -f "$_bash_func" ] || continue
+    # shellcheck source=/dev/null
+    source "$_bash_func"
+done
+unset _bash_func
+
+# Then load ordered modules.
+for _bash_mod in "$BASH_CONFIG_DIR"/bashrc.d/*.bash; do
+    [ -f "$_bash_mod" ] || continue
+    # shellcheck source=/dev/null
+    source "$_bash_mod"
+done
+unset _bash_mod BASH_CONFIG_DIR
+
+# Local overrides (not managed by chezmoi).
+if [ -f "$HOME/.bashrc.local" ]; then
+    # shellcheck source=/dev/null
+    source "$HOME/.bashrc.local"
+fi

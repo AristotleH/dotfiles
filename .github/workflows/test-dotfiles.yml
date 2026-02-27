@@ -41,6 +41,9 @@ jobs:
       - name: Validate fish configuration
         run: python3 .tests/test_fish.py
 
+      - name: Validate shell entrypoints
+        run: python3 .tests/test_shell_entrypoints.py
+
   shell-generator:
     name: Shell Generator Tests
     runs-on: ubuntu-latest
