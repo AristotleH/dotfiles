@@ -1,0 +1,13 @@
+# PowerShell + Bash test environment for shell config testing
+# Based on the official PowerShell image (Ubuntu), with bash and python3 added.
+# Used to test generated PowerShell and Bash configs on any machine with Docker.
+FROM mcr.microsoft.com/powershell:ubuntu-22.04
+
+# Install bash, python3, and pyyaml for running the test harness
+RUN apt-get update && apt-get install -y \
+    bash \
+    python3 \
+    python3-yaml \
+    && rm -rf /var/lib/apt/lists/*
+
+CMD ["/bin/bash"]

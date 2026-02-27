@@ -5,6 +5,8 @@
 set -g fish_greeting
 
 # Tide prompt truncation settings (configured via official tide variables).
-set -g tide_git_truncation_strategy l
+# Keep the start of branch names and truncate from the end.
+# Empty strategy maps to `string shorten -m...` (default right-side truncation).
+set -g tide_git_truncation_strategy ""
 set -g tide_git_truncation_length 24
 set -g tide_prompt_min_cols 70

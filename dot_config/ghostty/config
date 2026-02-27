@@ -1,0 +1,40 @@
+command = /opt/homebrew/bin/fish
+keybind = global:ctrl+cmd+grave_accent=toggle_quick_terminal
+
+# Cursor and input ergonomics
+cursor-style = block
+cursor-style-blink = false
+shell-integration-features = no-cursor
+cursor-click-to-move = true
+mouse-hide-while-typing = true
+
+# Window chrome and spacing
+macos-titlebar-style = tabs
+window-padding-x = 6
+window-padding-y = 4
+window-padding-balance = true
+
+# Theme and rendering
+theme = light:Monokai Pro Light,dark:Monokai Pro
+background-opacity = 0.96
+background-opacity-cells = true
+background-blur-radius = 40
+
+# Typography
+font-size = 14
+macos-option-as-alt = true
+font-family = Berkeley Mono
+
+# Clipboard safety and polish
+clipboard-trim-trailing-spaces = true
+clipboard-paste-protection = true
+
+# Quick terminal behavior
+quick-terminal-position = top
+quick-terminal-size = 40%
+quick-terminal-screen = mouse
+quick-terminal-animation-duration = 0.12
+
+# macOS windowing behavior
+# window-step-resize = true
+window-save-state = always

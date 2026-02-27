@@ -1,18 +1,18 @@
 # Shell Configuration Manifest
 #
 # Single source of truth for cross-shell functions and modules.
-# Run `generate_shell.py` (or `make generate-shell`) to produce
-# Fish and Zsh files from this manifest.
+# Run `generate_shell.py` (or `make generate`) to produce
+# Fish, Zsh, Bash, and PowerShell files from this manifest.
 #
 # -------------------------------------------------------------------------
 # Quick Reference
 # -------------------------------------------------------------------------
 #
 # Functions:
-#   Predicate (one-liner OS check):
+#   Predicate (one-liner OS/arch check):
 #     - name: is-darwin
 #       description: Check if running on macOS
-#       predicate: os_is_darwin          # see PREDICATES in generate_shell.py
+#       predicate: os_is_darwin       # see PREDICATES in generate_shell.py
 #
 #   Complex (shell-specific bodies):
 #     - name: my_func
@@ -20,8 +20,12 @@
 #       body:
 #         fish: |
 #           echo hello
-#         zsh: |
+#         posix: |                    # shared fallback for zsh + bash
 #           echo hello
+#         pwsh: |
+#           Write-Output hello
+#         # or use 'shared:' as a fallback for all shells
+#         # or use a string shorthand: body: "echo hello"
 #
 # Modules:
 #   PATH:
@@ -35,9 +39,16 @@
 #     - name: eza
 #       prefix: "40"
 #       description: Modern ls replacement
-#       guard: { command_exists: eza }    # see GUARDS in generate_shell.py
+#       guard: { command_exists: eza }
 #       aliases:
 #         ls: "eza"
+#
+#   Environment variables:
+#     - name: editor
+#       prefix: "05"
+#       description: Default editor
+#       env:
+#         EDITOR: vim
 #
 #   Tool init (guard + tool init shell | source):
 #     - name: zoxide
@@ -45,6 +56,31 @@
 #       description: Zoxide
 #       guard: { command_exists: zoxide }
 #       tool: zoxide
+#
+#   Eval command (run command and source output):
+#     - name: mise
+#       prefix: "50"
+#       description: mise
+#       guard: { command_exists: mise }
+#       eval_command: "mise activate {shell}"
+#
+#   Source file (source another file if it exists):
+#     - name: local
+#       prefix: "99"
+#       description: Local overrides
+#       source_file: "$HOME/.shellrc.local"
+#
+#   Conditional (if/elif/else with guards):
+#     - name: editor-setup
+#       prefix: "05"
+#       description: Editor configuration
+#       conditional:
+#         - if: { command_exists: nvim }
+#           env: { EDITOR: nvim, VISUAL: nvim }
+#         - elif: { command_exists: vim }
+#           env: { EDITOR: vim, VISUAL: vim }
+#         - else:
+#           env: { EDITOR: vi, VISUAL: vi }
 #
 #   Custom (guards + body):
 #     - name: tmux
@@ -60,8 +96,14 @@
 # Guards (singular `guard:` or list `guards:`):
 #   { command_exists: <cmd> }
 #   { env_not_set: <VAR> }
+#   { env_set: <VAR> }
 #   { env_equals: { var: <VAR>, value: <VAL> } }
 #   { not_env_equals: { var: <VAR>, value: <VAL> } }
+#   { file_exists: <path> }
+#   { dir_exists: <path> }
+#   { not: <any-guard> }
+#   { all: [<guard>, <guard>, ...] }  # logical AND composition
+#   { any: [<guard>, <guard>, ...] }  # logical OR composition
 #   is_tty
 #   is_interactive
 # -------------------------------------------------------------------------
@@ -104,7 +146,7 @@ functions:
 
         cd $original_dir
         return $exit_code
-      zsh: |
+      posix: |
         if [[ $# -lt 2 ]]; then
             echo "Usage: in_dir <directory> <command> [args...]" >&2
             return 1
@@ -124,6 +166,23 @@ functions:
 
         cd "$original_dir"
         return $exit_code
+      pwsh: |
+        param(
+            [Parameter(Mandatory)][string]$Directory,
+            [Parameter(Mandatory)][string]$Command,
+            [Parameter(ValueFromRemainingArguments)][string[]]$Arguments = @()
+        )
+        if (-not (Test-Path $Directory)) {
+            Write-Error "in_dir: cannot access directory: $Directory"
+            return
+        }
+        $originalDir = Get-Location
+        try {
+            Set-Location $Directory
+            & $Command @Arguments
+        } finally {
+            Set-Location $originalDir
+        }
 
 # ---------------------------------------------------------------------------
 # Modules
@@ -168,6 +227,109 @@ modules:
       - { env_not_set: TMUX }
       - { not_env_equals: { var: TERM_PROGRAM, value: vscode } }
       - is_interactive
+    body: "tmux attach 2>/dev/null || tmux new-session"
+
+  - name: prompt
+    prefix: "80"
+    description: Interactive shell prompt
+    comment: Bash and PowerShell get a status-aware prompt with git branch
+    guard: is_interactive
     body:
-      shared: |
-        tmux attach 2>/dev/null || tmux new-session
+      fish: |
+        # Prompt is managed in functions/fish_prompt.fish.
+      zsh: |
+        # Prompt is managed by powerlevel10k (or fallback in dot_zshrc).
+      bash: |
+        if [[ -n "${__DOT_PROMPT_INITIALIZED:-}" ]]; then
+            return 0
+        fi
+        __DOT_PROMPT_INITIALIZED=1
+        PROMPT_DIRTRIM=3
+        __dot_color_reset='\[\e[0m\]'
+        __dot_color_path='\[\e[34m\]'
+        __dot_color_branch='\[\e[33m\]'
+        __dot_color_status='\[\e[31m\]'
+
+        __dot_prompt_git_branch() {
+            command -v git &>/dev/null || return 0
+            local branch
+            branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || git rev-parse --short HEAD 2>/dev/null)" || return 0
+            if (( ${#branch} > 24 )); then
+                branch="${branch:0:21}..."
+            fi
+            printf " (%s)" "$branch"
+        }
+
+        __dot_prompt_precmd() {
+            local last_status=$?
+            local status_part=""
+            if [[ $last_status -ne 0 ]]; then
+                status_part="${__dot_color_status}[${last_status}] ${__dot_color_reset}"
+            fi
+
+            local branch
+            branch="$(__dot_prompt_git_branch)"
+            PS1="${status_part}${__dot_color_path}\w${__dot_color_reset}${__dot_color_branch}${branch}${__dot_color_reset} ❯ "
+        }
+
+        if [[ -n "${PROMPT_COMMAND:-}" ]]; then
+            PROMPT_COMMAND="__dot_prompt_precmd; ${PROMPT_COMMAND}"
+        else
+            PROMPT_COMMAND="__dot_prompt_precmd"
+        fi
+      pwsh: |
+        if ($global:__DotPromptInitialized) { return }
+        $global:__DotPromptInitialized = $true
+
+        if (Get-Variable PSStyle -Scope Global -ErrorAction SilentlyContinue) {
+            $global:__DotPromptColorRed = $PSStyle.Foreground.Red
+            $global:__DotPromptColorCyan = $PSStyle.Foreground.Cyan
+            $global:__DotPromptColorBlue = $PSStyle.Foreground.Blue
+            $global:__DotPromptColorYellow = $PSStyle.Foreground.Yellow
+            $global:__DotPromptColorReset = $PSStyle.Reset
+        } else {
+            $global:__DotPromptColorRed = ""
+            $global:__DotPromptColorCyan = ""
+            $global:__DotPromptColorBlue = ""
+            $global:__DotPromptColorYellow = ""
+            $global:__DotPromptColorReset = ""
+        }
+
+        function global:__DotPromptGitBranch {
+            if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return "" }
+            $branch = git symbolic-ref --quiet --short HEAD 2>$null
+            if (-not $branch) {
+                $branch = git rev-parse --short HEAD 2>$null
+            }
+            if ($branch -and $branch.Length -gt 24) {
+                $branch = $branch.Substring(0, 21) + "..."
+            }
+            if ($branch) { return " ($branch)" }
+            return ""
+        }
+
+        function global:__DotPromptPath {
+            $path = $executionContext.SessionState.Path.CurrentLocation.Path
+            if ($path.StartsWith($HOME)) {
+                $path = "~" + $path.Substring($HOME.Length)
+            }
+            $parts = $path -split '[\\/]'
+            if ($parts.Count -gt 4) {
+                return ".../" + ($parts[-3..-1] -join "/")
+            }
+            return ($parts -join "/")
+        }
+
+        function global:prompt {
+            $statusPart = ""
+            $nativeCode = if ($null -ne $LASTEXITCODE) { [int]$LASTEXITCODE } else { 0 }
+            if ((-not $?) -or ($nativeCode -ne 0)) {
+                $code = if ($nativeCode -ne 0) { $nativeCode } else { 1 }
+                $statusPart = "$($global:__DotPromptColorRed)[$code]$($global:__DotPromptColorReset) "
+            }
+
+            $path = __DotPromptPath
+            $branch = __DotPromptGitBranch
+
+            return "$statusPart$($global:__DotPromptColorBlue)$path$($global:__DotPromptColorReset)$($global:__DotPromptColorYellow)$branch$($global:__DotPromptColorReset) ❯ "
+        }

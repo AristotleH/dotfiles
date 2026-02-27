@@ -3,9 +3,12 @@ dot_DS_Store
 ~/dot_config/zsh/dot_zsh_sessions
 {{ end }}
 
-# {{ if eq .chezmoi.os "windows" }}
-#
-# {{ end }}
+{{ if eq .chezmoi.os "windows" }}
+dot_config/fish
+dot_config/zsh
+{{ else }}
+private_Documents/private_PowerShell
+{{ end }}
 
 # Build/test infrastructure (not mirrored to home)
 .pkgmgmt/
@@ -17,10 +20,15 @@ dot_DS_Store
 .config/fish/conf.d/.gitignore
 .config/zsh/.zfunctions/.gitignore
 .config/zsh/.zshrc.d/.gitignore
+.config/bash/functions/.gitignore
+.config/bash/bashrc.d/.gitignore
+.config/powershell/functions/.gitignore
+.config/powershell/conf.d/.gitignore
 
 # Documentation and development files (not mirrored to home)
 README.md
-CLAUDE.md
+/AGENTS.md
+/CLAUDE.md
 SHELL-SPEC.md
 .editorconfig
 .github/

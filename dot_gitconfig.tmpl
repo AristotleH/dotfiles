@@ -1,3 +1,4 @@
+{{- $extraGitConfigs := default "" .git.extraConfigs -}}
 [user]
 	email = {{ .git.email }}
 	name = {{ .git.name }}
@@ -75,4 +76,12 @@
 # This file is NOT managed by chezmoi - keep private/local settings here
 [include]
 	path = ~/.gitconfig.local
-
+{{- if $extraGitConfigs }}
+{{- range $path := splitList "," $extraGitConfigs }}
+{{- $path = trim $path }}
+{{- if $path }}
+[include]
+	path = {{ $path | quote }}
+{{- end }}
+{{- end }}
+{{- end }}

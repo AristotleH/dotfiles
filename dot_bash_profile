@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+# Keep login and interactive shells consistent.
+if [ -f "$HOME/.bashrc" ]; then
+    # shellcheck source=/dev/null
+    source "$HOME/.bashrc"
+fi

@@ -6,15 +6,27 @@ on:
       - '.tests/**'
       - '.shellgen/**'
       - '.chezmoiscripts/**'
+      - '.pkgmgmt/test-environments/Dockerfile.*'
       - 'dot_config/zsh/**'
       - 'dot_config/fish/**'
+      - 'dot_config/bash/**'
+      - 'dot_config/powershell/**'
+      - 'dot_bashrc'
+      - 'dot_bash_profile'
+      - 'private_Documents/private_PowerShell/**'
   pull_request:
     paths:
       - '.tests/**'
       - '.shellgen/**'
       - '.chezmoiscripts/**'
+      - '.pkgmgmt/test-environments/Dockerfile.*'
       - 'dot_config/zsh/**'
       - 'dot_config/fish/**'
+      - 'dot_config/bash/**'
+      - 'dot_config/powershell/**'
+      - 'dot_bashrc'
+      - 'dot_bash_profile'
+      - 'private_Documents/private_PowerShell/**'
 
 jobs:
   shell-config:
@@ -34,6 +46,9 @@ jobs:
 
       - name: Validate fish configuration
         run: python3 .tests/test_fish.py
+
+      - name: Validate shell entrypoints
+        run: python3 .tests/test_shell_entrypoints.py
 
   shell-generator:
     name: Shell Generator Tests
@@ -85,11 +100,16 @@ jobs:
             bash -c 'set -e
               cp -r /dotfiles-src /tmp/dotfiles
               mkdir -p ~/.config/chezmoi
-              echo "[data.git]" > ~/.config/chezmoi/chezmoi.toml
-              echo "  email = \"test@example.com\"" >> ~/.config/chezmoi/chezmoi.toml
-              echo "  name = \"Test User\"" >> ~/.config/chezmoi/chezmoi.toml
-              echo "[data.packages]" >> ~/.config/chezmoi/chezmoi.toml
-              echo "  runInstalls = false" >> ~/.config/chezmoi/chezmoi.toml
+              cat > ~/.config/chezmoi/chezmoi.toml << "CFGEOF"
+          [data.git]
+            email = "test@example.com"
+            name = "Test User"
+            extraConfigs = ""
+          [data.packages]
+            runInstalls = false
+          [data.shell]
+            extraManifests = ""
+          CFGEOF
               chezmoi init --source=/tmp/dotfiles --apply --force
               echo "Verifying generated shell config files..."
               for f in \
@@ -98,7 +118,67 @@ jobs:
                 ~/.config/fish/conf.d/00-path.fish \
                 ~/.config/zsh/.zfunctions/is-darwin \
                 ~/.config/zsh/.zfunctions/is-linux \
-                ~/.config/zsh/.zshrc.d/00-path.zsh; do
+                ~/.config/zsh/.zshrc.d/00-path.zsh \
+                ~/.config/bash/functions/is-darwin.bash \
+                ~/.config/bash/functions/is-linux.bash \
+                ~/.config/bash/bashrc.d/00-path.bash \
+                ~/.config/powershell/functions/is-darwin.ps1 \
+                ~/.config/powershell/functions/is-linux.ps1 \
+                ~/.config/powershell/conf.d/00-path.ps1; do
                 test -f "$f" || { echo "Missing generated file: $f"; exit 1; }
               done
               echo "All generated shell files present."'
+
+      - name: Test generated shell files actually work
+        run: |
+          docker run --rm \
+            -v "$PWD:/dotfiles-src:ro" \
+            chezmoi-test-debian:latest \
+            bash -c 'set -e
+              cp -r /dotfiles-src /tmp/dotfiles
+              mkdir -p ~/.config/chezmoi
+              cat > ~/.config/chezmoi/chezmoi.toml << "CFGEOF"
+          [data.git]
+            email = "test@example.com"
+            name = "Test User"
+            extraConfigs = ""
+          [data.packages]
+            runInstalls = false
+          [data.shell]
+            extraManifests = ""
+          CFGEOF
+              chezmoi init --source=/tmp/dotfiles --apply --force
+              echo "Running shell functionality tests..."
+              python3 /dotfiles-src/.tests/test_shell_functionality.py'
+
+  pwsh-test:
+    name: PowerShell + Bash Tests (Docker)
+    runs-on: ubuntu-latest
+    needs: [shell-config, shell-generator]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build pwsh test image
+        uses: docker/build-push-action@v5
+        with:
+          context: .pkgmgmt/test-environments
+          file: .pkgmgmt/test-environments/Dockerfile.pwsh
+          tags: shell-test-pwsh:latest
+          cache-from: type=gha,scope=pwsh
+          cache-to: type=gha,scope=pwsh,mode=max
+          load: true
+
+      - name: Test PowerShell and Bash generated configs
+        run: |
+          docker run --rm \
+            -v "$PWD:/dotfiles-src:ro" \
+            shell-test-pwsh:latest \
+            bash -c 'set -e
+              python3 /dotfiles-src/.shellgen/generate_shell.py \
+                --target /tmp/shelltest /dotfiles-src/.shellgen/shell.yaml
+              echo "Running PowerShell + Bash functionality tests..."
+              python3 /dotfiles-src/.tests/test_shell_functionality_windows.py /tmp/shelltest'

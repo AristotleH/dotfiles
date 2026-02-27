@@ -1,9 +1,17 @@
 #!/usr/bin/env python3
 """
-Generate Fish and Zsh configuration files from shell.yaml
+Shell configuration transpiler: YAML DSL → Fish, Zsh, Bash, PowerShell
 
-Run this script from the chezmoi source directory to regenerate
-all shell configuration files that have cross-shell equivalents.
+Transpiles a declarative YAML manifest into shell-specific configuration
+files for four target shells. The YAML DSL provides high-level constructs
+(environment variables, aliases, conditionals, guards, etc.) that are
+translated into idiomatic syntax for each shell.
+
+Target shells:
+    fish  — Fish shell (macOS, Linux)
+    zsh   — Z shell (macOS, Linux)
+    bash  — Bash / Git Bash (macOS, Linux, Windows)
+    pwsh  — PowerShell Core (Windows)
 
 Usage:
     # No args — default to script_dir/shell.yaml (backward compat)
@@ -27,38 +35,210 @@ import sys
 import warnings
 import yaml
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 
 HEADER = "# Generated from .shellgen/shell.yaml -- DO NOT EDIT"
 
 # ---------------------------------------------------------------------------
-# Data tables — add a new guard or predicate by adding one line
+# Shell constants
 # ---------------------------------------------------------------------------
 
-# Each entry: guard_name -> (fish_template, zsh_template)
-# Templates use {0} for simple value, {var}/{value} for dict values.
-GUARDS = {
-    "command_exists":  ("command -q {0}; or return 0",
-                        "(( $+commands[{0}] )) || return 0"),
-    "env_not_set":     ("not set -q {0}; or return 0",
-                        "[[ -z ${0} ]] || return 0"),
-    "env_equals":      ('test "${var}" = "{value}"; or return 0',
-                        '[[ "${var}" == "{value}" ]] || return 0'),
-    "not_env_equals":  ('test "${var}" != "{value}"; or return 0',
-                        '[[ "${var}" != "{value}" ]] || return 0'),
-    "is_tty":          ("isatty stdin; or return 0",
-                        "[[ -t 0 ]] || return 0"),
-    "is_interactive":  ("status is-interactive; or return 0",
-                        "[[ -o interactive ]] || return 0"),
+SHELLS = ("fish", "zsh", "bash", "pwsh")
+SHELL_INDEX = {"fish": 0, "zsh": 1, "bash": 2, "pwsh": 3}
+
+# File extensions for modules ({prefix}-{name}{ext})
+SHELL_MODULE_EXT = {
+    "fish": ".fish",
+    "zsh":  ".zsh",
+    "bash": ".bash",
+    "pwsh": ".ps1",
 }
 
-# Each entry: predicate_name -> (fish_body, zsh_body)
+# File extensions for functions ({name}{ext})  — zsh autoload has no extension
+SHELL_FUNC_EXT = {
+    "fish": ".fish",
+    "zsh":  "",
+    "bash": ".bash",
+    "pwsh": ".ps1",
+}
+
+
+# ---------------------------------------------------------------------------
+# Data tables — add a new guard or predicate by adding one line
+# ---------------------------------------------------------------------------
+# Each entry is a 4-tuple: (fish, zsh, bash, pwsh)
+
+# Guards as bail / early-return lines (used in module preamble).
+# Guard semantics: "if condition is NOT met, return 0 (skip this file)."
+GUARDS = {
+    "command_exists": (
+        "command -q {0}; or return 0",
+        "(( $+commands[{0}] )) || return 0",
+        "command -v {0} &>/dev/null || return 0",
+        "if (-not (Get-Command '{0}' -ErrorAction SilentlyContinue)) {{ return }}",
+    ),
+    "env_not_set": (
+        "not set -q {0}; or return 0",
+        "[[ -z ${0} ]] || return 0",
+        '[[ -z "${0}" ]] || return 0',
+        "if ($env:{0}) {{ return }}",
+    ),
+    "env_set": (
+        "set -q {0}; or return 0",
+        "[[ -n ${0} ]] || return 0",
+        '[[ -n "${0}" ]] || return 0',
+        "if (-not $env:{0}) {{ return }}",
+    ),
+    "env_equals": (
+        'test "${var}" = "{value}"; or return 0',
+        '[[ "${var}" == "{value}" ]] || return 0',
+        '[[ "${var}" == "{value}" ]] || return 0',
+        "if ($env:{var} -ne '{value}') {{ return }}",
+    ),
+    "not_env_equals": (
+        'test "${var}" != "{value}"; or return 0',
+        '[[ "${var}" != "{value}" ]] || return 0',
+        '[[ "${var}" != "{value}" ]] || return 0',
+        "if ($env:{var} -eq '{value}') {{ return }}",
+    ),
+    "is_tty": (
+        "isatty stdin; or return 0",
+        "[[ -t 0 ]] || return 0",
+        "[[ -t 0 ]] || return 0",
+        "if (-not [Environment]::UserInteractive) { return }",
+    ),
+    "is_interactive": (
+        "status is-interactive; or return 0",
+        "[[ -o interactive ]] || return 0",
+        '[[ $- == *i* ]] || return 0',
+        "if (-not [Environment]::UserInteractive) { return }",
+    ),
+    "file_exists": (
+        "test -f {0}; or return 0",
+        "[[ -f {0} ]] || return 0",
+        "[[ -f {0} ]] || return 0",
+        "if (-not (Test-Path '{0}' -PathType Leaf)) {{ return }}",
+    ),
+    "dir_exists": (
+        "test -d {0}; or return 0",
+        "[[ -d {0} ]] || return 0",
+        "[[ -d {0} ]] || return 0",
+        "if (-not (Test-Path '{0}' -PathType Container)) {{ return }}",
+    ),
+}
+
+# Guard conditions (for use in if/elif — no bail/return).
+# Same semantics: expression is truthy when condition IS met.
+GUARD_CONDITIONS = {
+    "command_exists": (
+        "command -q {0}",
+        "(( $+commands[{0}] ))",
+        "command -v {0} &>/dev/null",
+        "(Get-Command '{0}' -ErrorAction SilentlyContinue)",
+    ),
+    "env_not_set": (
+        "not set -q {0}",
+        "[[ -z ${0} ]]",
+        '[[ -z "${0}" ]]',
+        "(-not $env:{0})",
+    ),
+    "env_set": (
+        "set -q {0}",
+        "[[ -n ${0} ]]",
+        '[[ -n "${0}" ]]',
+        "($env:{0})",
+    ),
+    "env_equals": (
+        'test "${var}" = "{value}"',
+        '[[ "${var}" == "{value}" ]]',
+        '[[ "${var}" == "{value}" ]]',
+        "($env:{var} -eq '{value}')",
+    ),
+    "not_env_equals": (
+        'test "${var}" != "{value}"',
+        '[[ "${var}" != "{value}" ]]',
+        '[[ "${var}" != "{value}" ]]',
+        "($env:{var} -ne '{value}')",
+    ),
+    "is_tty": (
+        "isatty stdin",
+        "[[ -t 0 ]]",
+        "[[ -t 0 ]]",
+        "[Environment]::UserInteractive",
+    ),
+    "is_interactive": (
+        "status is-interactive",
+        "[[ -o interactive ]]",
+        '[[ $- == *i* ]]',
+        "[Environment]::UserInteractive",
+    ),
+    "file_exists": (
+        "test -f {0}",
+        "[[ -f {0} ]]",
+        "[[ -f {0} ]]",
+        "(Test-Path '{0}' -PathType Leaf)",
+    ),
+    "dir_exists": (
+        "test -d {0}",
+        "[[ -d {0} ]]",
+        "[[ -d {0} ]]",
+        "(Test-Path '{0}' -PathType Container)",
+    ),
+}
+
+# Predicate bodies (used in predicate functions).
+# Each entry: predicate_name -> (fish_body, zsh_body, bash_body, pwsh_body)
 PREDICATES = {
-    "os_is_darwin": ('test (uname) = "Darwin"',
-                     "[[ $OSTYPE == *darwin* ]]"),
-    "os_is_linux":  ('test (uname) = "Linux"',
-                     "[[ $OSTYPE == *linux* ]]"),
+    "os_is_darwin": (
+        'test (uname) = "Darwin"',
+        "[[ $OSTYPE == *darwin* ]]",
+        "[[ $OSTYPE == darwin* ]]",
+        "$IsMacOS",
+    ),
+    "os_is_linux": (
+        'test (uname) = "Linux"',
+        "[[ $OSTYPE == *linux* ]]",
+        "[[ $OSTYPE == linux* ]]",
+        "$IsLinux",
+    ),
+    "os_is_windows": (
+        'string match -q "Msys" (uname -o 2>/dev/null; or echo unknown)',
+        "[[ $OSTYPE == msys* ]]",
+        "[[ $OSTYPE == msys* ]]",
+        "$IsWindows",
+    ),
+    "arch_is_arm64": (
+        'test (uname -m) = arm64; or test (uname -m) = aarch64',
+        "[[ $(uname -m) == (arm64|aarch64) ]]",
+        '[[ $(uname -m) == arm64 || $(uname -m) == aarch64 ]]',
+        "[Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64'",
+    ),
+    "arch_is_x86_64": (
+        'test (uname -m) = "x86_64"',
+        "[[ $(uname -m) == x86_64 ]]",
+        '[[ $(uname -m) == x86_64 ]]',
+        "[Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'X64'",
+    ),
+}
+
+# All recognized guard keys (for validation)
+ALL_GUARD_KEYS = set(GUARDS.keys()) | {"not", "all", "any"}
+
+# Guard value-shape requirements for dict-form guards.
+# "none": no value payload allowed (bool true/None tolerated for YAML ergonomics)
+# "scalar": single scalar value (string/number)
+# "var_value": object with {"var": <scalar>, "value": <scalar>}
+GUARD_VALUE_KINDS = {
+    "command_exists": "scalar",
+    "env_not_set": "scalar",
+    "env_set": "scalar",
+    "env_equals": "var_value",
+    "not_env_equals": "var_value",
+    "is_tty": "none",
+    "is_interactive": "none",
+    "file_exists": "scalar",
+    "dir_exists": "scalar",
 }
 
 
@@ -66,9 +246,15 @@ PREDICATES = {
 # Validation
 # ---------------------------------------------------------------------------
 
+# Recognized body keys for modules (and conditional branches)
+BODY_KEYS = {"paths", "aliases", "tool", "body", "env", "source_file",
+             "eval_command", "conditional"}
+BODY_VARIANTS = set(SHELLS) | {"shared", "posix"}
+
+
 def validate_manifest(manifest: Dict) -> List[str]:
     """Validate the manifest and return a list of error messages (empty = OK)."""
-    errors = []
+    errors: List[str] = []
 
     for i, func in enumerate(manifest.get("functions", [])):
         ctx = f"functions[{i}]"
@@ -88,6 +274,8 @@ def validate_manifest(manifest: Dict) -> List[str]:
                 f"{ctx}: unknown predicate '{func['predicate']}' "
                 f"(known: {', '.join(sorted(PREDICATES))})"
             )
+        if has_body:
+            _validate_body_block(func["body"], ctx, errors)
 
     for i, mod in enumerate(manifest.get("modules", [])):
         ctx = f"modules[{i}]"
@@ -101,12 +289,32 @@ def validate_manifest(manifest: Dict) -> List[str]:
             errors.append(f"{ctx}: missing required field 'description'")
 
         # Check that module has at least one recognized body key
-        body_keys = {"paths", "aliases", "tool", "body"}
-        if not any(k in mod for k in body_keys):
+        if not any(k in mod for k in BODY_KEYS):
             errors.append(
                 f"{ctx}: must have at least one of: "
-                f"{', '.join(sorted(body_keys))}"
+                f"{', '.join(sorted(BODY_KEYS))}"
             )
+
+        # Validate env
+        if "env" in mod:
+            _validate_env(mod["env"], ctx, errors)
+
+        # Validate source_file
+        if "source_file" in mod:
+            _validate_source_file(mod["source_file"], ctx, errors)
+
+        # Validate eval_command
+        if "eval_command" in mod:
+            if not isinstance(mod["eval_command"], str):
+                errors.append(f"{ctx}: 'eval_command' must be a string")
+
+        # Validate body
+        if "body" in mod:
+            _validate_body_block(mod["body"], ctx, errors)
+
+        # Validate conditional
+        if "conditional" in mod:
+            _validate_conditional(mod["conditional"], ctx, errors)
 
         # Validate guards
         for guard in _collect_guards(mod):
@@ -115,23 +323,190 @@ def validate_manifest(manifest: Dict) -> List[str]:
     return errors
 
 
+def _validate_env(env: Any, ctx: str, errors: List[str]):
+    """Validate an env block."""
+    if not isinstance(env, dict):
+        errors.append(f"{ctx}: 'env' must be a dict of VAR: value pairs")
+        return
+    for key, val in env.items():
+        if not isinstance(key, str):
+            errors.append(f"{ctx}: env key must be a string, got {type(key)}")
+        if not isinstance(val, (str, int, float)):
+            errors.append(f"{ctx}: env value for '{key}' must be a string or number")
+
+
+def _validate_source_file(sf: Any, ctx: str, errors: List[str]):
+    """Validate a source_file block."""
+    if isinstance(sf, str):
+        return
+    if isinstance(sf, list):
+        for item in sf:
+            if not isinstance(item, str):
+                errors.append(f"{ctx}: source_file list items must be strings")
+        return
+    errors.append(f"{ctx}: 'source_file' must be a string or list of strings")
+
+
+def _validate_conditional(cond: Any, ctx: str, errors: List[str]):
+    """Validate a conditional block."""
+    if not isinstance(cond, list) or len(cond) == 0:
+        errors.append(f"{ctx}: 'conditional' must be a non-empty list")
+        return
+
+    first = cond[0]
+    if not isinstance(first, dict) or "if" not in first:
+        errors.append(f"{ctx}: first conditional branch must have an 'if' key")
+        return
+
+    # Validate the if condition guard
+    _validate_guard(first["if"], f"{ctx} conditional[0]", errors)
+    _validate_conditional_branch_body(first, f"{ctx} conditional[0]", errors)
+
+    for i, branch in enumerate(cond[1:], start=1):
+        bctx = f"{ctx} conditional[{i}]"
+        if not isinstance(branch, dict):
+            errors.append(f"{bctx}: branch must be a dict")
+            continue
+        has_elif = "elif" in branch
+        has_else = "else" in branch
+        if not has_elif and not has_else:
+            errors.append(f"{bctx}: branch must have 'elif' or 'else' key")
+        if has_elif and has_else:
+            errors.append(f"{bctx}: branch cannot have both 'elif' and 'else'")
+        if has_elif:
+            _validate_guard(branch["elif"], bctx, errors)
+        _validate_conditional_branch_body(branch, bctx, errors)
+
+
+def _validate_conditional_branch_body(branch: Dict, ctx: str,
+                                       errors: List[str]):
+    """Validate that a conditional branch has at least one body key."""
+    branch_body_keys = BODY_KEYS - {"conditional"}  # no nested conditionals
+    if not any(k in branch for k in branch_body_keys
+               if k not in ("if", "elif", "else")):
+        # Filter out the condition keys
+        body_found = False
+        for k in branch:
+            if k in branch_body_keys:
+                body_found = True
+                break
+        if not body_found:
+            errors.append(
+                f"{ctx}: conditional branch must have at least one body key "
+                f"({', '.join(sorted(branch_body_keys))})"
+            )
+    if "body" in branch:
+        _validate_body_block(branch["body"], ctx, errors)
+
+
+def _validate_body_block(body: Any, ctx: str, errors: List[str]):
+    """Validate a body block.
+
+    body may be either:
+    - string: shorthand for a shared body for all shells
+    - dict: one or more keys from SHELLS plus 'shared'/'posix'
+    """
+    if isinstance(body, str):
+        return
+    if not isinstance(body, dict):
+        errors.append(f"{ctx}: 'body' must be a string or dict")
+        return
+
+    for key, val in body.items():
+        if key not in BODY_VARIANTS:
+            errors.append(
+                f"{ctx}: unknown body key '{key}' "
+                f"(known: {', '.join(sorted(BODY_VARIANTS))})"
+            )
+        if not isinstance(val, str):
+            errors.append(
+                f"{ctx}: body value for '{key}' must be a string"
+            )
+
+
 def _validate_guard(guard: Any, ctx: str, errors: List[str]):
     """Validate a single guard entry."""
     if isinstance(guard, str):
         if guard not in GUARDS:
             errors.append(
                 f"{ctx}: unknown string guard '{guard}' "
-                f"(known: {', '.join(sorted(GUARDS))})"
+                f"(known: {', '.join(sorted(ALL_GUARD_KEYS))})"
             )
     elif isinstance(guard, dict):
+        if len(guard) != 1:
+            errors.append(f"{ctx}: guard dict must have exactly one key")
+            return
         key = next(iter(guard), None)
-        if key not in GUARDS:
+        if key == "not":
+            # Recursive: validate inner guard
+            inner = guard["not"]
+            _validate_guard(inner, f"{ctx} (inside 'not')", errors)
+        elif key in ("all", "any"):
+            inner = guard[key]
+            if not isinstance(inner, list) or not inner:
+                errors.append(f"{ctx}: '{key}' guard must be a non-empty list")
+                return
+            for i, nested in enumerate(inner):
+                _validate_guard(nested, f"{ctx} ({key}[{i}])", errors)
+        elif key not in GUARDS:
             errors.append(
                 f"{ctx}: unknown guard type '{key}' "
-                f"(known: {', '.join(sorted(GUARDS))})"
+                f"(known: {', '.join(sorted(ALL_GUARD_KEYS))})"
             )
+        else:
+            _validate_guard_value(key, guard[key], ctx, errors)
     else:
         errors.append(f"{ctx}: invalid guard type: {type(guard)}")
+
+
+def _validate_guard_value(key: str, value: Any, ctx: str, errors: List[str]):
+    """Validate the value shape for a recognized dict-form guard."""
+    kind = GUARD_VALUE_KINDS.get(key)
+    if kind is None:
+        return
+
+    scalar_types = (str, int, float)
+
+    if kind == "none":
+        if value not in (None, True):
+            errors.append(
+                f"{ctx}: guard '{key}' does not take a value "
+                f"(use string form '{key}')"
+            )
+        return
+
+    if kind == "scalar":
+        if not isinstance(value, scalar_types):
+            errors.append(
+                f"{ctx}: guard '{key}' must have a scalar value"
+            )
+        return
+
+    if kind == "var_value":
+        if not isinstance(value, dict):
+            errors.append(
+                f"{ctx}: guard '{key}' must be an object with 'var' and 'value'"
+            )
+            return
+
+        expected = {"var", "value"}
+        actual = set(value.keys())
+        missing = sorted(expected - actual)
+        extra = sorted(actual - expected)
+        if missing:
+            errors.append(
+                f"{ctx}: guard '{key}' missing keys: {', '.join(missing)}"
+            )
+        if extra:
+            errors.append(
+                f"{ctx}: guard '{key}' has unknown keys: {', '.join(extra)}"
+            )
+
+        for req in expected & actual:
+            if not isinstance(value[req], scalar_types):
+                errors.append(
+                    f"{ctx}: guard '{key}' field '{req}' must be a scalar"
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -148,8 +523,29 @@ def _collect_guards(mod: Dict) -> List[Any]:
 
 
 def translate_guard(guard: Any, shell: str) -> str:
-    """Convert a declarative guard to a shell-specific condition line."""
-    idx = 0 if shell == "fish" else 1
+    """Convert a declarative guard to a shell-specific bail line."""
+    idx = SHELL_INDEX[shell]
+
+    # Handle 'not' meta-guard
+    if isinstance(guard, dict) and next(iter(guard), None) == "not":
+        inner = guard["not"]
+        cond = translate_guard_condition(inner, shell)
+        # Negate: if condition IS true, bail
+        if shell == "fish":
+            return f"{cond}; and return 0"
+        elif shell == "pwsh":
+            return f"if ({cond}) {{ return }}"
+        else:  # bash, zsh
+            return f"{cond} && return 0"
+
+    if isinstance(guard, dict) and next(iter(guard), None) in ("all", "any"):
+        cond = translate_guard_condition(guard, shell)
+        if shell == "fish":
+            return f"{cond}; or return 0"
+        elif shell == "pwsh":
+            return f"if (-not ({cond})) {{ return }}"
+        else:  # bash, zsh
+            return f"{cond} || return 0"
 
     if isinstance(guard, str):
         if guard not in GUARDS:
@@ -171,8 +567,247 @@ def translate_guard(guard: Any, shell: str) -> str:
     raise ValueError(f"Invalid guard type: {type(guard)}")
 
 
+def translate_guard_condition(guard: Any, shell: str) -> str:
+    """Convert a declarative guard to a shell-specific condition expression.
+
+    Unlike translate_guard(), this returns a condition (no bail/return).
+    Used for if/elif in conditional blocks.
+    """
+    idx = SHELL_INDEX[shell]
+
+    # Handle 'not' meta-guard
+    if isinstance(guard, dict) and next(iter(guard), None) == "not":
+        inner = guard["not"]
+        cond = translate_guard_condition(inner, shell)
+        if shell == "fish":
+            return f"not {cond}"
+        elif shell == "pwsh":
+            return f"(-not {cond})"
+        else:  # bash, zsh
+            return f"! {cond}"
+
+    # Handle guard composition
+    if isinstance(guard, dict) and next(iter(guard), None) in ("all", "any"):
+        key = next(iter(guard))
+        nested = guard[key]
+        nested_conds = [translate_guard_condition(g, shell) for g in nested]
+        if shell == "fish":
+            op = "and" if key == "all" else "or"
+            return "begin; " + f"; {op} ".join(nested_conds) + "; end"
+        elif shell == "pwsh":
+            op = "-and" if key == "all" else "-or"
+            return "(" + f" {op} ".join(f"({c})" for c in nested_conds) + ")"
+        else:  # bash, zsh
+            op = "&&" if key == "all" else "||"
+            return "(" + f" {op} ".join(f"({c})" for c in nested_conds) + ")"
+
+    if isinstance(guard, str):
+        if guard not in GUARD_CONDITIONS:
+            raise ValueError(f"Unknown string guard: {guard}")
+        return GUARD_CONDITIONS[guard][idx]
+
+    if isinstance(guard, dict):
+        key = next(iter(guard))
+        if key not in GUARD_CONDITIONS:
+            raise ValueError(f"Unknown dict guard: {guard}")
+        value = guard[key]
+        template = GUARD_CONDITIONS[key][idx]
+
+        if isinstance(value, dict):
+            return template.format(**value)
+        else:
+            return template.format(value)
+
+    raise ValueError(f"Invalid guard type: {type(guard)}")
+
+
 # ---------------------------------------------------------------------------
-# Function generator (unified)
+# Render helpers — per-construct output for each shell
+# ---------------------------------------------------------------------------
+
+def _render_path(path: str, shell: str) -> str:
+    """Render a single PATH addition."""
+    if shell == "fish":
+        return f"fish_add_path {path}"
+    elif shell == "pwsh":
+        return f'$env:PATH = "{path}" + [IO.Path]::PathSeparator + $env:PATH'
+    else:  # bash, zsh
+        return f'export PATH="{path}:$PATH"'
+
+
+def _render_alias(name: str, cmd: str, shell: str) -> str:
+    """Render a single alias definition."""
+    if shell == "fish":
+        return f"alias {name}='{cmd}'"
+    elif shell == "pwsh":
+        # PowerShell can't do alias with args, so always use function form
+        return f"function {name} {{ {cmd} @args }}"
+    else:  # bash, zsh
+        return f'alias {name}="{cmd}"'
+
+
+def _render_tool_init(tool: str, shell: str) -> str:
+    """Render a tool init invocation."""
+    if shell == "fish":
+        return f"{tool} init fish | source"
+    elif shell == "pwsh":
+        return f"(& {tool} init pwsh) | Invoke-Expression"
+    else:  # bash, zsh
+        return f'eval "$({tool} init {shell})"'
+
+
+def _render_env_var(var: str, value: Any, shell: str) -> str:
+    """Render a single environment variable export."""
+    value = str(value)
+    if shell == "fish":
+        return f'set -gx {var} "{value}"'
+    elif shell == "pwsh":
+        return f'$env:{var} = "{value}"'
+    else:  # bash, zsh
+        return f'export {var}="{value}"'
+
+
+def _render_source_file(path: str, shell: str) -> str:
+    """Render a source-file-if-exists line."""
+    if shell == "fish":
+        return f'test -f "{path}"; and source "{path}"'
+    elif shell == "pwsh":
+        return f'if (Test-Path "{path}") {{ . "{path}" }}'
+    else:  # bash, zsh
+        return f'[[ -f "{path}" ]] && source "{path}"'
+
+
+def _render_eval_command(cmd: str, shell: str) -> str:
+    """Render an eval-command invocation.
+
+    The command string may contain {shell} which is replaced with the
+    target shell name.
+    """
+    resolved = cmd.replace("{shell}", shell if shell != "pwsh" else "pwsh")
+    if shell == "fish":
+        return f"{resolved} | source"
+    elif shell == "pwsh":
+        return f"(& {resolved}) | Invoke-Expression"
+    else:  # bash, zsh
+        return f'eval "$({resolved})"'
+
+
+def _resolve_body_text(body_section: Any, shell: str) -> str:
+    """Resolve body text for a shell.
+
+    body_section may be a string shorthand or a dict keyed by:
+    - shell names (fish/zsh/bash/pwsh)
+    - posix: fallback for zsh + bash
+    - shared: fallback for all shells
+    """
+    if isinstance(body_section, str):
+        return body_section.rstrip("\n")
+    if not isinstance(body_section, dict):
+        return ""
+    if shell in body_section:
+        return body_section[shell].rstrip("\n")
+    if shell in ("zsh", "bash") and "posix" in body_section:
+        return body_section["posix"].rstrip("\n")
+    if "shared" in body_section:
+        return body_section["shared"].rstrip("\n")
+    return ""
+
+
+def _render_body_lines(section: Dict, shell: str) -> List[str]:
+    """Render body constructs from a dict (module or conditional branch).
+
+    Returns a flat list of output lines (no header, no guards).
+    Handles: env, paths, aliases, tool, source_file, eval_command, body.
+    """
+    lines: List[str] = []
+
+    if "env" in section:
+        for var, val in section["env"].items():
+            lines.append(_render_env_var(var, val, shell))
+
+    if "paths" in section:
+        for p in section["paths"]:
+            lines.append(_render_path(p, shell))
+
+    if "aliases" in section:
+        for alias_name, alias_cmd in section["aliases"].items():
+            lines.append(_render_alias(alias_name, alias_cmd, shell))
+
+    if "tool" in section:
+        lines.append(_render_tool_init(section["tool"], shell))
+
+    if "source_file" in section:
+        sf = section["source_file"]
+        if isinstance(sf, str):
+            lines.append(_render_source_file(sf, shell))
+        elif isinstance(sf, list):
+            for path in sf:
+                lines.append(_render_source_file(path, shell))
+
+    if "eval_command" in section:
+        lines.append(_render_eval_command(section["eval_command"], shell))
+
+    if "body" in section:
+        body = _resolve_body_text(section["body"], shell)
+        if body:
+            lines.extend(body.split("\n"))
+
+    return lines
+
+
+def _render_conditional(conditional: List[Dict], shell: str) -> str:
+    """Render a conditional (if/elif/else) block."""
+    parts: List[str] = []
+
+    for i, branch in enumerate(conditional):
+        if "if" in branch:
+            cond = translate_guard_condition(branch["if"], shell)
+            body_lines = _render_body_lines(branch, shell)
+            if shell == "fish":
+                parts.append(f"if {cond}")
+            elif shell == "pwsh":
+                parts.append(f"if ({cond}) {{")
+            else:  # bash, zsh
+                parts.append(f"if {cond}; then")
+            for line in body_lines:
+                parts.append(f"    {line}" if line.strip() else "")
+
+        elif "elif" in branch:
+            cond = translate_guard_condition(branch["elif"], shell)
+            body_lines = _render_body_lines(branch, shell)
+            if shell == "fish":
+                parts.append(f"else if {cond}")
+            elif shell == "pwsh":
+                parts.append(f"}} elseif ({cond}) {{")
+            else:  # bash, zsh
+                parts.append(f"elif {cond}; then")
+            for line in body_lines:
+                parts.append(f"    {line}" if line.strip() else "")
+
+        elif "else" in branch:
+            body_lines = _render_body_lines(branch, shell)
+            if shell == "fish":
+                parts.append("else")
+            elif shell == "pwsh":
+                parts.append("} else {")
+            else:  # bash, zsh
+                parts.append("else")
+            for line in body_lines:
+                parts.append(f"    {line}" if line.strip() else "")
+
+    # Close the block
+    if shell == "fish":
+        parts.append("end")
+    elif shell == "pwsh":
+        parts.append("}")
+    else:  # bash, zsh
+        parts.append("fi")
+
+    return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Function generator
 # ---------------------------------------------------------------------------
 
 def generate_function(func: Dict, shell: str) -> str:
@@ -188,7 +823,7 @@ def generate_function(func: Dict, shell: str) -> str:
 
 def _generate_predicate(name: str, desc: str, predicate: str,
                         shell: str) -> str:
-    idx = 0 if shell == "fish" else 1
+    idx = SHELL_INDEX[shell]
     body = PREDICATES[predicate][idx]
     lines = [HEADER]
 
@@ -197,7 +832,17 @@ def _generate_predicate(name: str, desc: str, predicate: str,
         lines.append(f"function {name} --description '{desc}'")
         lines.append(f"    {body}")
         lines.append("end")
-    else:
+    elif shell == "bash":
+        lines.append(f"# {desc}")
+        lines.append(f"{name}() {{")
+        lines.append(f"    {body}")
+        lines.append("}")
+    elif shell == "pwsh":
+        lines.append(f"# {desc}")
+        lines.append(f"function {name} {{")
+        lines.append(f"    {body}")
+        lines.append("}")
+    else:  # zsh — autoload, no wrapper
         lines.append("")
         lines.append(body)
 
@@ -215,21 +860,32 @@ def _generate_complex(name: str, desc: str, func: Dict, shell: str) -> str:
         lines.append(f"# {desc}")
     lines.append("")
 
-    body_text = func["body"][shell].rstrip("\n")
+    # Resolve body text: shell-specific, then posix (zsh/bash), then shared.
+    body_text = _resolve_body_text(func["body"], shell)
 
     if shell == "fish":
         lines.append(f"function {name}")
         for line in body_text.split("\n"):
             lines.append(f"    {line}" if line.strip() else "")
         lines.append("end")
-    else:
+    elif shell == "bash":
+        lines.append(f"{name}() {{")
+        for line in body_text.split("\n"):
+            lines.append(f"    {line}" if line.strip() else "")
+        lines.append("}")
+    elif shell == "pwsh":
+        lines.append(f"function {name} {{")
+        for line in body_text.split("\n"):
+            lines.append(f"    {line}" if line.strip() else "")
+        lines.append("}")
+    else:  # zsh — autoload, bare body
         lines.append(body_text)
 
     return "\n".join(lines) + "\n"
 
 
 # ---------------------------------------------------------------------------
-# Module generator (unified)
+# Module generator
 # ---------------------------------------------------------------------------
 
 def generate_module(mod: Dict, shell: str) -> str:
@@ -252,32 +908,13 @@ def generate_module(mod: Dict, shell: str) -> str:
     if guards:
         lines.append("")
 
-    # Body — infer type from which keys are present
-    if "paths" in mod:
-        for p in mod["paths"]:
-            if shell == "fish":
-                lines.append(f"fish_add_path {p}")
-            else:
-                lines.append(f'export PATH="{p}:$PATH"')
-    elif "aliases" in mod:
-        for alias_name, alias_cmd in mod["aliases"].items():
-            if shell == "fish":
-                lines.append(f"alias {alias_name}='{alias_cmd}'")
-            else:
-                lines.append(f'alias {alias_name}="{alias_cmd}"')
-    elif "tool" in mod:
-        tool = mod["tool"]
-        if shell == "fish":
-            lines.append(f"{tool} init fish | source")
-        else:
-            lines.append(f'eval "$({tool} init zsh)"')
-    elif "body" in mod:
-        body_section = mod["body"]
-        if shell in body_section:
-            body = body_section[shell].rstrip("\n")
-        else:
-            body = body_section["shared"].rstrip("\n")
-        lines.append(body)
+    # Body — render all body constructs
+    body_lines = _render_body_lines(mod, shell)
+    lines.extend(body_lines)
+
+    # Conditional (rendered separately because it's a multi-line block)
+    if "conditional" in mod:
+        lines.append(_render_conditional(mod["conditional"], shell))
 
     return "\n".join(lines) + "\n"
 
@@ -308,13 +945,13 @@ def merge_manifests(base: Dict, extra: Dict) -> Dict:
     return merged
 
 
-def resolve_sources(paths: List[str]) -> List[Path]:
+def resolve_sources(paths: List[str], quiet: bool = False) -> List[Path]:
     """Resolve a list of path strings to YAML file paths.
 
     Each path is resolved as:
-    - File → load directly
-    - Directory → load shell.yaml inside it (error if not found)
-    - Nonexistent → skip with warning
+    - File -> load directly
+    - Directory -> load shell.yaml inside it (error if not found)
+    - Nonexistent -> skip with warning
     """
     resolved = []
     for p in paths:
@@ -326,9 +963,11 @@ def resolve_sources(paths: List[str]) -> List[Path]:
             if yaml_path.is_file():
                 resolved.append(yaml_path)
             else:
-                warnings.warn(f"No shell.yaml found in directory: {path}")
+                if not quiet:
+                    warnings.warn(f"No shell.yaml found in directory: {path}")
         else:
-            warnings.warn(f"Source path does not exist, skipping: {path}")
+            if not quiet:
+                warnings.warn(f"Source path does not exist, skipping: {path}")
     return resolved
 
 
@@ -336,30 +975,62 @@ def resolve_sources(paths: List[str]) -> List[Path]:
 # Output directory mapping
 # ---------------------------------------------------------------------------
 
-def get_output_dirs(target: Path | None, repo_root: Path) -> tuple:
-    """Return (fish_func, zsh_func, fish_confd, zsh_confd) directories.
+def get_output_dirs(target: Optional[Path], repo_root: Path) -> Dict[str, Dict[str, Path]]:
+    """Return output directories keyed by shell and type.
+
+    Returns a dict like:
+        {
+            "fish":  {"functions": Path(...), "modules": Path(...)},
+            "zsh":   {"functions": Path(...), "modules": Path(...)},
+            "bash":  {"functions": Path(...), "modules": Path(...)},
+            "pwsh":  {"functions": Path(...), "modules": Path(...)},
+        }
 
     When target is None, returns chezmoi source-dir paths (dot_ prefixed).
     When target is set, returns real config paths under target.
     """
     if target is None:
-        return (
-            repo_root / "dot_config" / "fish" / "functions",
-            repo_root / "dot_config" / "zsh" / "dot_zfunctions",
-            repo_root / "dot_config" / "fish" / "conf.d",
-            repo_root / "dot_config" / "zsh" / "dot_zshrc.d",
-        )
+        return {
+            "fish": {
+                "functions": repo_root / "dot_config" / "fish" / "functions",
+                "modules":   repo_root / "dot_config" / "fish" / "conf.d",
+            },
+            "zsh": {
+                "functions": repo_root / "dot_config" / "zsh" / "dot_zfunctions",
+                "modules":   repo_root / "dot_config" / "zsh" / "dot_zshrc.d",
+            },
+            "bash": {
+                "functions": repo_root / "dot_config" / "bash" / "functions",
+                "modules":   repo_root / "dot_config" / "bash" / "bashrc.d",
+            },
+            "pwsh": {
+                "functions": repo_root / "dot_config" / "powershell" / "functions",
+                "modules":   repo_root / "dot_config" / "powershell" / "conf.d",
+            },
+        }
     else:
-        return (
-            target / "fish" / "functions",
-            target / "zsh" / ".zfunctions",
-            target / "fish" / "conf.d",
-            target / "zsh" / ".zshrc.d",
-        )
+        return {
+            "fish": {
+                "functions": target / "fish" / "functions",
+                "modules":   target / "fish" / "conf.d",
+            },
+            "zsh": {
+                "functions": target / "zsh" / ".zfunctions",
+                "modules":   target / "zsh" / ".zshrc.d",
+            },
+            "bash": {
+                "functions": target / "bash" / "functions",
+                "modules":   target / "bash" / "bashrc.d",
+            },
+            "pwsh": {
+                "functions": target / "powershell" / "functions",
+                "modules":   target / "powershell" / "conf.d",
+            },
+        }
 
 
 # ---------------------------------------------------------------------------
-# Main
+# File generation
 # ---------------------------------------------------------------------------
 
 def _write_gitignore(directory: Path, filenames: List[str]):
@@ -369,54 +1040,53 @@ def _write_gitignore(directory: Path, filenames: List[str]):
     (directory / ".gitignore").write_text("\n".join(lines) + "\n")
 
 
-def generate_all(manifest: Dict, target: Path | None, repo_root: Path) -> List[Path]:
+def generate_all(manifest: Dict, target: Optional[Path],
+                 repo_root: Path, quiet: bool = False) -> List[Path]:
     """Generate all shell config files and return list of written paths."""
-    fish_func_dir, zsh_func_dir, fish_confd_dir, zsh_confd_dir = \
-        get_output_dirs(target, repo_root)
+    dirs = get_output_dirs(target, repo_root)
 
-    # Ensure output directories exist
-    for d in (fish_func_dir, zsh_func_dir, fish_confd_dir, zsh_confd_dir):
-        d.mkdir(parents=True, exist_ok=True)
+    # Ensure all output directories exist
+    for shell_dirs in dirs.values():
+        for d in shell_dirs.values():
+            d.mkdir(parents=True, exist_ok=True)
 
-    generated_files = []
+    generated_files: List[Path] = []
     # Track filenames per directory for .gitignore
-    dir_files: Dict[Path, List[str]] = {
-        fish_func_dir: [], zsh_func_dir: [],
-        fish_confd_dir: [], zsh_confd_dir: [],
-    }
+    dir_files: Dict[Path, List[str]] = {}
+    for shell_dirs in dirs.values():
+        for d in shell_dirs.values():
+            dir_files[d] = []
 
     # --- Functions ---
     for func in manifest.get("functions", []):
         name = func["name"]
+        for shell in SHELLS:
+            func_ext = SHELL_FUNC_EXT[shell]
+            func_dir = dirs[shell]["functions"]
+            filename = f"{name}{func_ext}"
+            func_path = func_dir / filename
 
-        fish_path = fish_func_dir / f"{name}.fish"
-        fish_path.write_text(generate_function(func, "fish"))
-        generated_files.append(fish_path)
-        dir_files[fish_func_dir].append(f"{name}.fish")
-        print(f"  {fish_path}")
-
-        zsh_path = zsh_func_dir / name
-        zsh_path.write_text(generate_function(func, "zsh"))
-        generated_files.append(zsh_path)
-        dir_files[zsh_func_dir].append(name)
-        print(f"  {zsh_path}")
+            func_path.write_text(generate_function(func, shell))
+            generated_files.append(func_path)
+            dir_files[func_dir].append(filename)
+            if not quiet:
+                print(f"  {func_path}")
 
     # --- Modules ---
     for mod in manifest.get("modules", []):
         name = mod["name"]
         prefix = mod["prefix"]
+        for shell in SHELLS:
+            mod_ext = SHELL_MODULE_EXT[shell]
+            mod_dir = dirs[shell]["modules"]
+            filename = f"{prefix}-{name}{mod_ext}"
+            mod_path = mod_dir / filename
 
-        fish_path = fish_confd_dir / f"{prefix}-{name}.fish"
-        fish_path.write_text(generate_module(mod, "fish"))
-        generated_files.append(fish_path)
-        dir_files[fish_confd_dir].append(f"{prefix}-{name}.fish")
-        print(f"  {fish_path}")
-
-        zsh_path = zsh_confd_dir / f"{prefix}-{name}.zsh"
-        zsh_path.write_text(generate_module(mod, "zsh"))
-        generated_files.append(zsh_path)
-        dir_files[zsh_confd_dir].append(f"{prefix}-{name}.zsh")
-        print(f"  {zsh_path}")
+            mod_path.write_text(generate_module(mod, shell))
+            generated_files.append(mod_path)
+            dir_files[mod_dir].append(filename)
+            if not quiet:
+                print(f"  {mod_path}")
 
     # Write per-directory .gitignore files
     for d, names in dir_files.items():
@@ -426,24 +1096,32 @@ def generate_all(manifest: Dict, target: Path | None, repo_root: Path) -> List[P
     return generated_files
 
 
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate Fish and Zsh config files from shell.yaml")
+        description="Transpile shell.yaml into Fish, Zsh, Bash, and "
+                    "PowerShell config files")
     parser.add_argument(
         "sources", nargs="*",
-        help="YAML files or directories (dir → dir/shell.yaml). "
+        help="YAML files or directories (dir -> dir/shell.yaml). "
              "If omitted, defaults to script_dir/shell.yaml.")
     parser.add_argument(
         "--target", type=Path, default=None,
         help="Write to real config paths under DIR (e.g. ~/.config). "
              "Without this flag, writes to chezmoi source dir.")
+    parser.add_argument(
+        "--quiet", action="store_true",
+        help="Suppress non-error output.")
     args = parser.parse_args()
 
     script_dir = Path(__file__).parent
     repo_root = script_dir.parent
 
     # Collect sources: stdin lines first, then positional args
-    raw_sources = []
+    raw_sources: List[str] = []
     if not sys.stdin.isatty():
         for line in sys.stdin:
             line = line.strip()
@@ -455,7 +1133,7 @@ def main():
     if not raw_sources:
         raw_sources = [str(script_dir / "shell.yaml")]
 
-    source_files = resolve_sources(raw_sources)
+    source_files = resolve_sources(raw_sources, quiet=args.quiet)
     if not source_files:
         print("Error: no valid source files found")
         return 1
@@ -474,8 +1152,11 @@ def main():
             print(f"  - {err}")
         return 1
 
-    generated_files = generate_all(manifest, args.target, repo_root)
-    print(f"\nGenerated {len(generated_files)} shell config files.")
+    generated_files = generate_all(manifest, args.target, repo_root,
+                                   quiet=args.quiet)
+    if not args.quiet:
+        print(f"\nGenerated {len(generated_files)} shell config files "
+              f"for {len(SHELLS)} shells.")
     return 0
 
 
