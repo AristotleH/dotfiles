@@ -18,6 +18,7 @@
 * Write comments to explain why, not what. If your code isn't self-documenting, rewrite it.
 * Fix warnings. If you can't fix them, document why.
 * Added code should have tests, if possible. Tests should exercise intended behavior, not implementation.
+* Work on feature branches, never on the trunk.
 
 ## Workflow
 
@@ -25,4 +26,4 @@
 * Think about my request before implementing. Plan if necessary, but only if necessary.
 * When planning, make durable, long-term solutions. Address the tough, open questions and ask for clarifications if needed. If you think my prompt is too vague, ask me for more details. Feel free to do this before or after you've started to plan.
 * Make targeted, incremental changes. Don't get stuck in trial-and-error loops for too long. If you find yourself stuck, go back to planning.
-* Once you've made significant, quality progress, commit your code. Use the imperative mood and keep your messages concise, but detailed.
+* Commit frequently. Once you've made significant, quality progress, push the commits. Use the imperative mood and keep your messages concise, but detailed.
