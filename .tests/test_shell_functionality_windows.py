@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """
-Functionality tests for generated shell configuration files on Windows.
+Functionality tests for PowerShell and Bash generated shell configs.
 
-Tests PowerShell (pwsh) and Bash (Git Bash) generated configs.
-Runs on Windows CI (GitHub Actions windows-latest) or any system
-with pwsh and/or bash available.
+Tests that generated .ps1 and .bash files actually work when loaded
+and executed. Designed to run inside a Docker container with pwsh and
+bash installed (see Dockerfile.pwsh), but also works natively on any
+system with pwsh and/or bash available.
+
+Platform-aware assertions adapt to the host OS:
+  - Linux (Docker): is-linux returns true, is-darwin returns false
+  - Windows (native): is-linux returns false, is-darwin returns false
 
 Usage:
   python3 .tests/test_shell_functionality_windows.py <config_dir>

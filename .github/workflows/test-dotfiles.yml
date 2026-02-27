@@ -6,6 +6,7 @@ on:
       - '.tests/**'
       - '.shellgen/**'
       - '.chezmoiscripts/**'
+      - '.pkgmgmt/test-environments/Dockerfile.*'
       - 'dot_config/zsh/**'
       - 'dot_config/fish/**'
       - 'dot_config/bash/**'
@@ -15,6 +16,7 @@ on:
       - '.tests/**'
       - '.shellgen/**'
       - '.chezmoiscripts/**'
+      - '.pkgmgmt/test-environments/Dockerfile.*'
       - 'dot_config/zsh/**'
       - 'dot_config/fish/**'
       - 'dot_config/bash/**'
@@ -138,30 +140,34 @@ jobs:
               echo "Running shell functionality tests..."
               python3 /dotfiles-src/.tests/test_shell_functionality.py'
 
-  windows-test:
-    name: Windows Shell Tests (pwsh + Git Bash)
-    runs-on: windows-latest
+  pwsh-test:
+    name: PowerShell + Bash Tests (Docker)
+    runs-on: ubuntu-latest
     needs: [shell-config, shell-generator]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build pwsh test image
+        uses: docker/build-push-action@v5
         with:
-          python-version: '3.x'
+          context: .pkgmgmt/test-environments
+          file: .pkgmgmt/test-environments/Dockerfile.pwsh
+          tags: shell-test-pwsh:latest
+          cache-from: type=gha,scope=pwsh
+          cache-to: type=gha,scope=pwsh,mode=max
+          load: true
 
-      - name: Install dependencies
-        run: pip install pyyaml
-
-      - name: Generate shell configs to temp dir
+      - name: Test PowerShell and Bash generated configs
         run: |
-          $targetDir = Join-Path $env:RUNNER_TEMP "shelltest"
-          python3 .shellgen/generate_shell.py --target $targetDir .shellgen/shell.yaml
-        shell: pwsh
-
-      - name: Run Windows functionality tests
-        run: |
-          $targetDir = Join-Path $env:RUNNER_TEMP "shelltest"
-          python3 .tests/test_shell_functionality_windows.py $targetDir
-        shell: pwsh
+          docker run --rm \
+            -v "$PWD:/dotfiles-src:ro" \
+            shell-test-pwsh:latest \
+            bash -c 'set -e
+              python3 /dotfiles-src/.shellgen/generate_shell.py \
+                --target /tmp/shelltest /dotfiles-src/.shellgen/shell.yaml
+              echo "Running PowerShell + Bash functionality tests..."
+              python3 /dotfiles-src/.tests/test_shell_functionality_windows.py /tmp/shelltest'
