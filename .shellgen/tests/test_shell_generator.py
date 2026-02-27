@@ -230,6 +230,35 @@ def test_complex_shared_fallback():
         assert "echo hello" in result
 
 
+def test_complex_posix_fallback_for_bash_and_zsh():
+    """Complex function supports a posix fallback for zsh + bash."""
+    func = {
+        "name": "greet",
+        "description": "Greet the user",
+        "body": {
+            "fish": "echo fish",
+            "posix": "echo posix",
+            "pwsh": 'Write-Output "pwsh"',
+        },
+    }
+    assert "echo posix" in generate_function(func, "zsh")
+    assert "echo posix" in generate_function(func, "bash")
+    assert "echo fish" in generate_function(func, "fish")
+    assert 'Write-Output "pwsh"' in generate_function(func, "pwsh")
+
+
+def test_complex_body_string_shorthand():
+    """Complex function accepts body as a shared string shorthand."""
+    func = {
+        "name": "greet",
+        "description": "Greet the user",
+        "body": "echo hello",
+    }
+    for shell in SHELLS:
+        result = generate_function(func, shell)
+        assert "echo hello" in result
+
+
 # ---------------------------------------------------------------------------
 # Guards — bail form
 # ---------------------------------------------------------------------------
@@ -393,6 +422,42 @@ def test_guard_not_wrapper():
     assert "Get-Command" in pwsh and "return" in pwsh
 
 
+def test_guard_all_wrapper():
+    """The 'all' meta-guard composes guards with logical AND."""
+    guard = {
+        "all": [
+            {"command_exists": "git"},
+            {"env_set": "HOME"},
+        ]
+    }
+    fish = translate_guard(guard, "fish")
+    zsh = translate_guard(guard, "zsh")
+    bash = translate_guard(guard, "bash")
+    pwsh = translate_guard(guard, "pwsh")
+    assert "command -q git" in fish and "and set -q HOME" in fish
+    assert "&&" in zsh and "commands[git]" in zsh
+    assert "&&" in bash and "command -v git" in bash
+    assert "-and" in pwsh and "Get-Command 'git'" in pwsh
+
+
+def test_guard_any_wrapper():
+    """The 'any' meta-guard composes guards with logical OR."""
+    guard = {
+        "any": [
+            {"command_exists": "brew"},
+            {"command_exists": "apt-get"},
+        ]
+    }
+    fish = translate_guard(guard, "fish")
+    zsh = translate_guard(guard, "zsh")
+    bash = translate_guard(guard, "bash")
+    pwsh = translate_guard(guard, "pwsh")
+    assert "or command -q apt-get" in fish
+    assert "||" in zsh and "commands[brew]" in zsh
+    assert "||" in bash and "command -v brew" in bash
+    assert "-or" in pwsh and "Get-Command 'apt-get'" in pwsh
+
+
 # ---------------------------------------------------------------------------
 # Guard conditions (for if/elif in conditionals)
 # ---------------------------------------------------------------------------
@@ -427,6 +492,20 @@ def test_guard_condition_string_guard():
     assert translate_guard_condition("is_interactive", "fish") == "status is-interactive"
     assert translate_guard_condition("is_interactive", "bash") == '[[ $- == *i* ]]'
     assert translate_guard_condition("is_tty", "zsh") == "[[ -t 0 ]]"
+
+
+def test_guard_condition_all_any():
+    """Guard condition composer forms generate expected operators."""
+    all_guard = {"all": [{"command_exists": "git"}, {"env_set": "HOME"}]}
+    any_guard = {"any": [{"command_exists": "brew"}, {"command_exists": "apt-get"}]}
+
+    assert "and" in translate_guard_condition(all_guard, "fish")
+    assert "&&" in translate_guard_condition(all_guard, "bash")
+    assert "-and" in translate_guard_condition(all_guard, "pwsh")
+
+    assert "or" in translate_guard_condition(any_guard, "fish")
+    assert "||" in translate_guard_condition(any_guard, "zsh")
+    assert "-or" in translate_guard_condition(any_guard, "pwsh")
 
 
 # ---------------------------------------------------------------------------
@@ -643,6 +722,18 @@ def test_custom_module_shared_body():
         "description": "Tmux auto-attach",
         "guards": [{"command_exists": "tmux"}],
         "body": {"shared": "tmux attach 2>/dev/null || tmux new-session"},
+    }
+    for shell in SHELLS:
+        result = generate_module(mod, shell)
+        assert "tmux attach 2>/dev/null || tmux new-session" in result
+
+
+def test_custom_module_body_string_shorthand():
+    """Custom module accepts body as a shared string shorthand."""
+    mod = {
+        "name": "tmux", "prefix": "70",
+        "description": "Tmux auto-attach",
+        "body": "tmux attach 2>/dev/null || tmux new-session",
     }
     for shell in SHELLS:
         result = generate_module(mod, shell)
@@ -1036,6 +1127,61 @@ def test_validate_not_guard_bad_inner():
     ]}
     errors = validate_manifest(manifest)
     assert any("unknown guard type 'bad_guard'" in e for e in errors)
+
+
+def test_validate_all_any_guard():
+    """Validation accepts nested all/any guard composition."""
+    manifest = {"modules": [
+        {"name": "good", "prefix": "99", "description": "test",
+         "guard": {"all": [
+             {"env_set": "HOME"},
+             {"any": [{"command_exists": "git"}, {"command_exists": "hg"}]},
+         ]},
+         "body": {"shared": "echo ok"}}
+    ]}
+    errors = validate_manifest(manifest)
+    assert errors == []
+
+
+def test_validate_all_any_guard_bad_shape():
+    """Validation rejects invalid all/any guard shape."""
+    manifest = {"modules": [
+        {"name": "bad", "prefix": "99", "description": "test",
+         "guard": {"any": "not-a-list"},
+         "body": {"shared": "echo ok"}}
+    ]}
+    errors = validate_manifest(manifest)
+    assert any("'any' guard must be a non-empty list" in e for e in errors)
+
+
+def test_validate_body_shorthands():
+    """Validation accepts body string shorthand and posix fallback key."""
+    manifest = {
+        "functions": [
+            {"name": "f", "description": "x", "body": {"posix": "echo hi"}},
+            {"name": "g", "description": "x", "body": "echo hi"},
+        ],
+        "modules": [
+            {"name": "m", "prefix": "99", "description": "x", "body": "echo ok"},
+        ],
+    }
+    errors = validate_manifest(manifest)
+    assert errors == []
+
+
+def test_validate_body_bad_shape():
+    """Validation rejects invalid body block types."""
+    manifest = {
+        "functions": [
+            {"name": "badf", "description": "x", "body": 42},
+        ],
+        "modules": [
+            {"name": "badm", "prefix": "99", "description": "x", "body": {"shared": 1}},
+        ],
+    }
+    errors = validate_manifest(manifest)
+    assert any("'body' must be a string or dict" in e for e in errors)
+    assert any("body value for 'shared' must be a string" in e for e in errors)
 
 
 def test_validate_new_guards_accepted():

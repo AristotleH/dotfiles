@@ -93,16 +93,16 @@ Functions with shell-specific or shared bodies.
     body:
       fish: |
         echo hello from fish
-      zsh: |
-        echo hello from zsh
-      bash: |
-        echo hello from bash
+      posix: |               # fallback used by zsh + bash
+        echo hello from POSIX shells
       pwsh: |
         Write-Output "hello from pwsh"
       # Or use 'shared:' as a fallback for any missing shell key
+    # Or use string shorthand:
+    # body: "echo hello from every shell"
 ```
 
-**Key precedence:** shell-specific key (`fish:`, `zsh:`, `bash:`, `pwsh:`) > `shared:` fallback.
+**Key precedence:** shell-specific key (`fish:`, `zsh:`, `bash:`, `pwsh:`) > `posix:` (for zsh/bash) > `shared:` fallback.
 
 **Translation wrapping:**
 
@@ -314,7 +314,7 @@ Raw shell code with shell-specific or shared variants.
     #   ...
 ```
 
-Key precedence: shell-specific key > `shared:` fallback.
+Key precedence: shell-specific key > `posix:` (zsh/bash) > `shared:` fallback.
 
 ---
 
@@ -339,6 +339,12 @@ guards:
 
 # Negated guard
 guard: { not: { command_exists: nvim } }
+
+# Composed guards
+guard:
+  all:
+    - { command_exists: git }
+    - { any: [{ command_exists: brew }, { command_exists: apt-get }] }
 ```
 
 ### Guard Types — Bail Form
@@ -378,6 +384,20 @@ guard: { not: { command_exists: nvim } }
 
 **Bail form:** if condition IS met, bail (reversed logic).
 **Condition form:** `not <condition>` (Fish), `! <condition>` (Bash/Zsh), `(-not <condition>)` (PowerShell).
+
+### `all` and `any` Meta-Guards
+
+Compose guards for nested boolean logic:
+
+```yaml
+guard:
+  all:
+    - { env_set: HOME }
+    - { any: [{ command_exists: git }, { command_exists: hg }] }
+```
+
+- `all`: logical AND of nested guards
+- `any`: logical OR of nested guards
 
 ---
 

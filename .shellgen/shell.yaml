@@ -20,13 +20,12 @@
 #       body:
 #         fish: |
 #           echo hello
-#         zsh: |
-#           echo hello
-#         bash: |
+#         posix: |                    # shared fallback for zsh + bash
 #           echo hello
 #         pwsh: |
 #           Write-Output hello
 #         # or use 'shared:' as a fallback for all shells
+#         # or use a string shorthand: body: "echo hello"
 #
 # Modules:
 #   PATH:
@@ -103,6 +102,8 @@
 #   { file_exists: <path> }
 #   { dir_exists: <path> }
 #   { not: <any-guard> }
+#   { all: [<guard>, <guard>, ...] }  # logical AND composition
+#   { any: [<guard>, <guard>, ...] }  # logical OR composition
 #   is_tty
 #   is_interactive
 # -------------------------------------------------------------------------
@@ -145,27 +146,7 @@ functions:
 
         cd $original_dir
         return $exit_code
-      zsh: |
-        if [[ $# -lt 2 ]]; then
-            echo "Usage: in_dir <directory> <command> [args...]" >&2
-            return 1
-        fi
-
-        local target_dir="$1"
-        shift
-        local original_dir="$PWD"
-
-        if ! cd "$target_dir" 2>/dev/null; then
-            echo "in_dir: cannot access directory: $target_dir" >&2
-            return 1
-        fi
-
-        "$@"
-        local exit_code=$?
-
-        cd "$original_dir"
-        return $exit_code
-      bash: |
+      posix: |
         if [[ $# -lt 2 ]]; then
             echo "Usage: in_dir <directory> <command> [args...]" >&2
             return 1
@@ -246,9 +227,7 @@ modules:
       - { env_not_set: TMUX }
       - { not_env_equals: { var: TERM_PROGRAM, value: vscode } }
       - is_interactive
-    body:
-      shared: |
-        tmux attach 2>/dev/null || tmux new-session
+    body: "tmux attach 2>/dev/null || tmux new-session"
 
   - name: prompt
     prefix: "80"

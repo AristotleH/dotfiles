@@ -223,7 +223,7 @@ PREDICATES = {
 }
 
 # All recognized guard keys (for validation)
-ALL_GUARD_KEYS = set(GUARDS.keys()) | {"not"}
+ALL_GUARD_KEYS = set(GUARDS.keys()) | {"not", "all", "any"}
 
 
 # ---------------------------------------------------------------------------
@@ -233,6 +233,7 @@ ALL_GUARD_KEYS = set(GUARDS.keys()) | {"not"}
 # Recognized body keys for modules (and conditional branches)
 BODY_KEYS = {"paths", "aliases", "tool", "body", "env", "source_file",
              "eval_command", "conditional"}
+BODY_VARIANTS = set(SHELLS) | {"shared", "posix"}
 
 
 def validate_manifest(manifest: Dict) -> List[str]:
@@ -257,6 +258,8 @@ def validate_manifest(manifest: Dict) -> List[str]:
                 f"{ctx}: unknown predicate '{func['predicate']}' "
                 f"(known: {', '.join(sorted(PREDICATES))})"
             )
+        if has_body:
+            _validate_body_block(func["body"], ctx, errors)
 
     for i, mod in enumerate(manifest.get("modules", [])):
         ctx = f"modules[{i}]"
@@ -288,6 +291,10 @@ def validate_manifest(manifest: Dict) -> List[str]:
         if "eval_command" in mod:
             if not isinstance(mod["eval_command"], str):
                 errors.append(f"{ctx}: 'eval_command' must be a string")
+
+        # Validate body
+        if "body" in mod:
+            _validate_body_block(mod["body"], ctx, errors)
 
         # Validate conditional
         if "conditional" in mod:
@@ -372,6 +379,33 @@ def _validate_conditional_branch_body(branch: Dict, ctx: str,
                 f"{ctx}: conditional branch must have at least one body key "
                 f"({', '.join(sorted(branch_body_keys))})"
             )
+    if "body" in branch:
+        _validate_body_block(branch["body"], ctx, errors)
+
+
+def _validate_body_block(body: Any, ctx: str, errors: List[str]):
+    """Validate a body block.
+
+    body may be either:
+    - string: shorthand for a shared body for all shells
+    - dict: one or more keys from SHELLS plus 'shared'/'posix'
+    """
+    if isinstance(body, str):
+        return
+    if not isinstance(body, dict):
+        errors.append(f"{ctx}: 'body' must be a string or dict")
+        return
+
+    for key, val in body.items():
+        if key not in BODY_VARIANTS:
+            errors.append(
+                f"{ctx}: unknown body key '{key}' "
+                f"(known: {', '.join(sorted(BODY_VARIANTS))})"
+            )
+        if not isinstance(val, str):
+            errors.append(
+                f"{ctx}: body value for '{key}' must be a string"
+            )
 
 
 def _validate_guard(guard: Any, ctx: str, errors: List[str]):
@@ -388,6 +422,13 @@ def _validate_guard(guard: Any, ctx: str, errors: List[str]):
             # Recursive: validate inner guard
             inner = guard["not"]
             _validate_guard(inner, f"{ctx} (inside 'not')", errors)
+        elif key in ("all", "any"):
+            inner = guard[key]
+            if not isinstance(inner, list) or not inner:
+                errors.append(f"{ctx}: '{key}' guard must be a non-empty list")
+                return
+            for i, nested in enumerate(inner):
+                _validate_guard(nested, f"{ctx} ({key}[{i}])", errors)
         elif key not in GUARDS:
             errors.append(
                 f"{ctx}: unknown guard type '{key}' "
@@ -425,6 +466,15 @@ def translate_guard(guard: Any, shell: str) -> str:
             return f"if ({cond}) {{ return }}"
         else:  # bash, zsh
             return f"{cond} && return 0"
+
+    if isinstance(guard, dict) and next(iter(guard), None) in ("all", "any"):
+        cond = translate_guard_condition(guard, shell)
+        if shell == "fish":
+            return f"{cond}; or return 0"
+        elif shell == "pwsh":
+            return f"if (-not ({cond})) {{ return }}"
+        else:  # bash, zsh
+            return f"{cond} || return 0"
 
     if isinstance(guard, str):
         if guard not in GUARDS:
@@ -464,6 +514,21 @@ def translate_guard_condition(guard: Any, shell: str) -> str:
             return f"(-not {cond})"
         else:  # bash, zsh
             return f"! {cond}"
+
+    # Handle guard composition
+    if isinstance(guard, dict) and next(iter(guard), None) in ("all", "any"):
+        key = next(iter(guard))
+        nested = guard[key]
+        nested_conds = [translate_guard_condition(g, shell) for g in nested]
+        if shell == "fish":
+            op = "and" if key == "all" else "or"
+            return "begin; " + f"; {op} ".join(nested_conds) + "; end"
+        elif shell == "pwsh":
+            op = "-and" if key == "all" else "-or"
+            return "(" + f" {op} ".join(f"({c})" for c in nested_conds) + ")"
+        else:  # bash, zsh
+            op = "&&" if key == "all" else "||"
+            return "(" + f" {op} ".join(f"({c})" for c in nested_conds) + ")"
 
     if isinstance(guard, str):
         if guard not in GUARD_CONDITIONS:
@@ -556,6 +621,27 @@ def _render_eval_command(cmd: str, shell: str) -> str:
         return f'eval "$({resolved})"'
 
 
+def _resolve_body_text(body_section: Any, shell: str) -> str:
+    """Resolve body text for a shell.
+
+    body_section may be a string shorthand or a dict keyed by:
+    - shell names (fish/zsh/bash/pwsh)
+    - posix: fallback for zsh + bash
+    - shared: fallback for all shells
+    """
+    if isinstance(body_section, str):
+        return body_section.rstrip("\n")
+    if not isinstance(body_section, dict):
+        return ""
+    if shell in body_section:
+        return body_section[shell].rstrip("\n")
+    if shell in ("zsh", "bash") and "posix" in body_section:
+        return body_section["posix"].rstrip("\n")
+    if "shared" in body_section:
+        return body_section["shared"].rstrip("\n")
+    return ""
+
+
 def _render_body_lines(section: Dict, shell: str) -> List[str]:
     """Render body constructs from a dict (module or conditional branch).
 
@@ -591,13 +677,7 @@ def _render_body_lines(section: Dict, shell: str) -> List[str]:
         lines.append(_render_eval_command(section["eval_command"], shell))
 
     if "body" in section:
-        body_section = section["body"]
-        if shell in body_section:
-            body = body_section[shell].rstrip("\n")
-        elif "shared" in body_section:
-            body = body_section["shared"].rstrip("\n")
-        else:
-            body = ""
+        body = _resolve_body_text(section["body"], shell)
         if body:
             lines.extend(body.split("\n"))
 
@@ -709,14 +789,8 @@ def _generate_complex(name: str, desc: str, func: Dict, shell: str) -> str:
         lines.append(f"# {desc}")
     lines.append("")
 
-    # Resolve body text: prefer shell-specific, fall back to shared
-    body_section = func["body"]
-    if shell in body_section:
-        body_text = body_section[shell].rstrip("\n")
-    elif "shared" in body_section:
-        body_text = body_section["shared"].rstrip("\n")
-    else:
-        body_text = ""
+    # Resolve body text: shell-specific, then posix (zsh/bash), then shared.
+    body_text = _resolve_body_text(func["body"], shell)
 
     if shell == "fish":
         lines.append(f"function {name}")
