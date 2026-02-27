@@ -72,10 +72,11 @@ def test_pwsh_syntax():
         if not d.exists():
             continue
         for f in sorted(d.glob("*.ps1")):
-            # Use Get-Command -Syntax to parse without executing
+            # Use ParseFile with pre-declared variables to avoid [ref] errors
             rc, out, err = run_pwsh(
-                f"$null = [System.Management.Automation.Language.Parser]"
-                f"::ParseFile('{f}', [ref]$null, [ref]$errs); "
+                f"$tokens = $null; $errs = $null; "
+                f"[System.Management.Automation.Language.Parser]"
+                f"::ParseFile('{f}', [ref]$tokens, [ref]$errs) | Out-Null; "
                 f"if ($errs.Count -gt 0) {{ $errs | ForEach-Object {{ $_.Message }}; exit 1 }}"
             )
             if rc != 0:
@@ -254,13 +255,13 @@ def run_all_tests():
         for test in tests:
             try:
                 test()
-                print(f"  \u2713 {test.__name__}")
+                print(f"  PASS {test.__name__}")
                 passed += 1
             except AssertionError as e:
-                print(f"  \u2717 {test.__name__}: {e}")
+                print(f"  FAIL {test.__name__}: {e}")
                 failed += 1
             except Exception as e:
-                print(f"  \u2717 {test.__name__}: Unexpected error: {e}")
+                print(f"  FAIL {test.__name__}: Unexpected error: {e}")
                 failed += 1
 
     print(f"\n{passed} passed, {failed} failed, {skipped} skipped")
