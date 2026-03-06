@@ -72,7 +72,10 @@ def test_generate_to_tempdir():
         for mod in manifest.get("modules", []):
             name = mod["name"]
             prefix = mod["prefix"]
+            skip_shells = set(mod.get("skip_shells", []))
             for shell in SHELLS:
+                if shell in skip_shells:
+                    continue
                 mod_ext = SHELL_MODULE_EXT[shell]
                 mod_dir = dirs[shell]["modules"]
                 expected_files.append(mod_dir / f"{prefix}-{name}{mod_ext}")
@@ -120,7 +123,10 @@ def test_generate_to_tempdir():
         for mod in manifest.get("modules", []):
             name = mod["name"]
             prefix = mod["prefix"]
+            skip_shells = set(mod.get("skip_shells", []))
             for shell in SHELLS:
+                if shell in skip_shells:
+                    continue
                 mod_ext = SHELL_MODULE_EXT[shell]
                 mod_dir = dirs[shell]["modules"]
                 path = mod_dir / f"{prefix}-{name}{mod_ext}"

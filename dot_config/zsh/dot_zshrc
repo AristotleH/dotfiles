@@ -1,11 +1,5 @@
 #!/bin/zsh
 
-# Powerlevel10k Instant Prompt
-# Must stay at the top. Any code that might produce output must go above this.
-if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
-  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
-fi
-
 # Custom Functions
 ZFUNCDIR=${ZDOTDIR:-$HOME}/.zfunctions
 fpath=($ZFUNCDIR $fpath)
@@ -43,13 +37,6 @@ for _rc in ${ZDOTDIR:-$HOME}/.zshrc.d/*.zsh; do
   [[ $_rc:t != '~'* ]] && source "$_rc"
 done
 unset _rc
-
-# Prompt (run `p10k configure` to customize)
-if (( $+functions[p10k] )); then
-  [[ ! -f ${ZDOTDIR:-$HOME}/.p10k.zsh ]] || source ${ZDOTDIR:-$HOME}/.p10k.zsh
-else
-  PROMPT='%F{blue}%1~%f %# '
-fi
 
 # Local overrides (not managed by chezmoi)
 [[ -f ${ZDOTDIR:-$HOME}/.zshrc.local ]] && source ${ZDOTDIR:-$HOME}/.zshrc.local

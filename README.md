@@ -6,7 +6,7 @@ Personal dotfiles managed with [chezmoi](https://www.chezmoi.io/).
 
 - **Cross-platform**: Works on macOS, Linux (Debian/Ubuntu, Arch, Fedora), and Windows (MSYS2)
 - **Unified package management**: Define packages once in YAML, install everywhere
-- **Dual shell support**: Fish (with Tide prompt) and Zsh (with Powerlevel10k)
+- **Dual shell support**: Fish and Zsh with matching custom prompts
 - **Modern CLI tools**: bat, eza, fd, fzf, ripgrep, zoxide, git-delta, and more
 - **Tmux integration**: Mouse support, OSC passthrough for modern terminals
 
@@ -159,7 +159,7 @@ Example `~/.gitconfig.local`:
 
 The Fish shell configuration includes:
 
-- [Tide prompt](https://github.com/IlanCosman/tide) (v6)
+- Custom prompt (pwd + git status + arrow, transient on submit)
 - Syntax highlighting (built-in)
 - Modern CLI tool aliases (eza, bat, etc.)
 - Custom functions in `~/.config/fish/functions/`
@@ -172,9 +172,8 @@ Add machine-specific settings in `~/.config/fish/config.local.fish` (not managed
 
 The Zsh shell configuration includes:
 
-- [Powerlevel10k](https://github.com/romkatv/powerlevel10k) prompt (run `p10k configure` to customize)
+- Custom prompt (pwd + git status + arrow, transient on submit) matching Fish
 - [Antidote](https://github.com/mattmc3/antidote) plugin manager
-- [fzf-tab](https://github.com/Aloxaf/fzf-tab) for fuzzy completion
 - Syntax highlighting and autosuggestions
 - Native git completions (full subcommand support)
 - Custom functions in `~/.config/zsh/.zfunctions/`
@@ -183,12 +182,10 @@ The Zsh shell configuration includes:
 
 Plugins are defined in `~/.config/zsh/.zsh_plugins.txt`:
 
-- `mattmc3/ez-compinit` - Lazy completion initialization
 - `zsh-users/zsh-completions` - Additional completions
-- `Aloxaf/fzf-tab` - Fuzzy tab completion with fzf
-- `romkatv/powerlevel10k` - Fast, customizable prompt
 - `zdharma-continuum/fast-syntax-highlighting` - Command highlighting
 - `zsh-users/zsh-autosuggestions` - Fish-like history suggestions
+- `marlonrichert/zsh-autocomplete` - Fish-like live completions
 
 #### External Zsh Config
 
@@ -310,6 +307,5 @@ Use the helper script to find package names across platforms:
 - [chezmoi documentation](https://www.chezmoi.io/)
 - [Fish shell documentation](https://fishshell.com/docs/current/)
 - [Zsh documentation](https://zsh.sourceforge.io/Doc/)
-- [Powerlevel10k](https://github.com/romkatv/powerlevel10k)
 - [fzf](https://github.com/junegunn/fzf)
 - [Package management documentation](.pkgmgmt/PACKAGES.md)

@@ -19,7 +19,6 @@ ZSHRC = ZSH_DIR / "dot_zshrc"
 ZSHRC_D = ZSH_DIR / "dot_zshrc.d"
 ZSHENV = ZSH_DIR / "dot_zshenv"
 PLUGINS_TXT = ZSH_DIR / "dot_zsh_plugins.txt"
-P10K = ZSH_DIR / "dot_p10k.zsh"
 ZFUNCTIONS = ZSH_DIR / "dot_zfunctions"
 
 # Expected numeric prefix pattern: NN-name.zsh
@@ -51,11 +50,6 @@ def test_zfunctions_dir_exists():
 def test_plugins_txt_exists():
     """dot_zsh_plugins.txt must exist (antidote plugin list)."""
     assert PLUGINS_TXT.is_file(), f"{PLUGINS_TXT} not found"
-
-
-def test_p10k_config_exists():
-    """dot_p10k.zsh must exist (powerlevel10k configuration)."""
-    assert P10K.is_file(), f"{P10K} not found"
 
 
 # ---- .zshrc.d load order ----
@@ -171,30 +165,6 @@ def test_zshrc_sources_zshrc_d():
     assert ".zshrc.d/*.zsh" in content, (
         "dot_zshrc missing .zshrc.d/*.zsh sourcing loop"
     )
-
-
-def test_zshrc_instant_prompt_at_top():
-    """Powerlevel10k instant prompt must be near the top of dot_zshrc.
-
-    p10k instant prompt enables the prompt to appear before the rest of
-    the config finishes loading. Any console output before it breaks
-    the feature.
-    """
-    content = ZSHRC.read_text()
-    p10k_pos = content.find("p10k-instant-prompt")
-    assert p10k_pos != -1, "Missing p10k instant prompt block"
-    # Should be in the first 5 non-blank lines
-    lines = [l for l in content.splitlines() if l.strip()]
-    found_in_first_5 = any("p10k-instant-prompt" in l for l in lines[:5])
-    assert found_in_first_5, (
-        "p10k instant prompt must be in the first few lines of dot_zshrc"
-    )
-
-
-def test_zshrc_loads_p10k():
-    """dot_zshrc must source the p10k configuration file."""
-    content = ZSHRC.read_text()
-    assert ".p10k.zsh" in content, "dot_zshrc missing p10k.zsh sourcing"
 
 
 def test_zshrc_supports_local_override():
@@ -465,7 +435,6 @@ def run_all_tests():
         test_zshrc_d_exists,
         test_zfunctions_dir_exists,
         test_plugins_txt_exists,
-        test_p10k_config_exists,
         # Load order
         test_zshrc_d_files_are_numbered,
         test_no_duplicate_prefixes,
@@ -476,8 +445,6 @@ def run_all_tests():
         test_zsh_syntax,
         # dot_zshrc structure
         test_zshrc_sources_zshrc_d,
-        test_zshrc_instant_prompt_at_top,
-        test_zshrc_loads_p10k,
         test_zshrc_supports_local_override,
         test_zshrc_local_override_at_end,
         test_zshrc_autoloads_zfunctions,

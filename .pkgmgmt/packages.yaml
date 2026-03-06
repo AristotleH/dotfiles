@@ -18,10 +18,14 @@ cli_tools:
   - name: fish
     pkg: fish
 
+<<<<<<< ours
   - name: fisher
     pkg: fisher
     skip: [apt, pacman, dnf]
 
+||||||| base
+=======
+>>>>>>> theirs
   - name: tmux
     pkg: tmux
 

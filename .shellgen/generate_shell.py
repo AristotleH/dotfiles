@@ -1076,7 +1076,10 @@ def generate_all(manifest: Dict, target: Optional[Path],
     for mod in manifest.get("modules", []):
         name = mod["name"]
         prefix = mod["prefix"]
+        skip_shells = set(mod.get("skip_shells", []))
         for shell in SHELLS:
+            if shell in skip_shells:
+                continue
             mod_ext = SHELL_MODULE_EXT[shell]
             mod_dir = dirs[shell]["modules"]
             filename = f"{prefix}-{name}{mod_ext}"

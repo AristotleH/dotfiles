@@ -234,42 +234,81 @@ modules:
     description: Interactive shell prompt
     comment: Bash and PowerShell get a status-aware prompt with git branch
     guard: is_interactive
+    skip_shells: [fish, zsh]
     body:
-      fish: |
-        # Prompt is managed in functions/fish_prompt.fish.
-      zsh: |
-        # Prompt is managed by powerlevel10k (or fallback in dot_zshrc).
       bash: |
         if [[ -n "${__DOT_PROMPT_INITIALIZED:-}" ]]; then
             return 0
         fi
         __DOT_PROMPT_INITIALIZED=1
-        PROMPT_DIRTRIM=3
-        __dot_color_reset='\[\e[0m\]'
-        __dot_color_path='\[\e[34m\]'
-        __dot_color_branch='\[\e[33m\]'
-        __dot_color_status='\[\e[31m\]'
 
-        __dot_prompt_git_branch() {
-            command -v git &>/dev/null || return 0
+        # ANSI colors wrapped in \[...\] so bash measures width correctly
+        __dc_reset='\[\e[0m\]'
+        __dc_brcyan='\[\e[96m\]'
+        __dc_brmag='\[\e[95m\]'
+        __dc_cyan='\[\e[36m\]'
+        __dc_brgrn='\[\e[92m\]'
+        __dc_brylw='\[\e[93m\]'
+        __dc_brred='\[\e[91m\]'
+        __dc_brblu='\[\e[94m\]'
+
+        __dot_prompt_pwd() {
+            local cwd="${PWD/#$HOME/~}"
+            local cols="${COLUMNS:-80}"
+            local parts; IFS='/' read -ra parts <<< "$cwd"
+            local n=${#parts[@]} truncate=0 out='' sep='' p seg
+            (( ${#cwd} > cols / 2 )) && truncate=1
+            local i
+            for (( i=0; i<n; i++ )); do
+                p="${parts[$i]}"
+                if (( i == 0 || i == n-1 )); then
+                    seg="${__dc_brcyan}${p}${__dc_reset}"
+                elif [[ -z "$p" ]]; then
+                    seg=''
+                elif (( truncate )); then
+                    seg="${__dc_brmag}${p:0:1}${__dc_reset}"
+                else
+                    seg="${__dc_brcyan}${p}${__dc_reset}"
+                fi
+                out+="${sep}${seg}"
+                sep="${__dc_cyan}/${__dc_reset}"
+            done
+            printf '%s' "$out"
+        }
+
+        __dot_prompt_git() {
+            command -v git &>/dev/null || return
             local branch
-            branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || git rev-parse --short HEAD 2>/dev/null)" || return 0
-            if (( ${#branch} > 24 )); then
-                branch="${branch:0:21}..."
+            branch="$(git branch --show-current 2>/dev/null)" || return
+            if [[ -z "$branch" ]]; then
+                branch="$(git tag --points-at HEAD 2>/dev/null | head -1)"
+                if [[ -n "$branch" ]]; then
+                    branch="#${branch}"
+                else
+                    branch="@$(git rev-parse --short HEAD 2>/dev/null)"
+                fi
             fi
-            printf " (%s)" "$branch"
+            (( ${#branch} > 24 )) && branch="${branch:0:21}..."
+            local stat staged=0 dirty=0 untracked=0
+            stat="$(git --no-optional-locks status --porcelain 2>/dev/null)"
+            while IFS= read -r line; do
+                [[ "$line" =~ ^[ADMR] ]] && (( staged++ ))
+                [[ "$line" =~ ^.[ADMR] ]] && (( dirty++ ))
+                [[ "$line" =~ ^\?\? ]] && (( untracked++ ))
+            done <<< "$stat"
+            local color="${__dc_brgrn}"
+            (( staged > 0 || dirty > 0 || untracked > 0 )) && color="${__dc_brylw}"
+            printf ' %s%s%s' "$color" "$branch" "${__dc_reset}"
+            (( staged     > 0 )) && printf ' %s+%d%s' "${__dc_brylw}" "$staged"     "${__dc_reset}"
+            (( dirty      > 0 )) && printf ' %s!%d%s' "${__dc_brylw}" "$dirty"      "${__dc_reset}"
+            (( untracked  > 0 )) && printf ' %s?%d%s' "${__dc_brblu}" "$untracked"  "${__dc_reset}"
         }
 
         __dot_prompt_precmd() {
-            local last_status=$?
-            local status_part=""
-            if [[ $last_status -ne 0 ]]; then
-                status_part="${__dot_color_status}[${last_status}] ${__dot_color_reset}"
-            fi
-
-            local branch
-            branch="$(__dot_prompt_git_branch)"
-            PS1="${status_part}${__dot_color_path}\w${__dot_color_reset}${__dot_color_branch}${branch}${__dot_color_reset} ❯ "
+            local last=$?
+            local arrow_color="${__dc_brgrn}"
+            (( last != 0 )) && arrow_color="${__dc_brred}"
+            PS1="$(__dot_prompt_pwd)$(__dot_prompt_git)"$'\n'"${arrow_color}❯${__dc_reset} "
         }
 
         if [[ -n "${PROMPT_COMMAND:-}" ]]; then
@@ -282,54 +321,70 @@ modules:
         $global:__DotPromptInitialized = $true
 
         if (Get-Variable PSStyle -Scope Global -ErrorAction SilentlyContinue) {
-            $global:__DotPromptColorRed = $PSStyle.Foreground.Red
-            $global:__DotPromptColorCyan = $PSStyle.Foreground.Cyan
-            $global:__DotPromptColorBlue = $PSStyle.Foreground.Blue
-            $global:__DotPromptColorYellow = $PSStyle.Foreground.Yellow
-            $global:__DotPromptColorReset = $PSStyle.Reset
+            $global:__dc_reset  = $PSStyle.Reset
+            $global:__dc_brcyan = $PSStyle.Foreground.BrightCyan
+            $global:__dc_brmag  = $PSStyle.Foreground.BrightMagenta
+            $global:__dc_cyan   = $PSStyle.Foreground.Cyan
+            $global:__dc_brgrn  = $PSStyle.Foreground.BrightGreen
+            $global:__dc_brylw  = $PSStyle.Foreground.BrightYellow
+            $global:__dc_brred  = $PSStyle.Foreground.BrightRed
+            $global:__dc_brblu  = $PSStyle.Foreground.BrightBlue
         } else {
-            $global:__DotPromptColorRed = ""
-            $global:__DotPromptColorCyan = ""
-            $global:__DotPromptColorBlue = ""
-            $global:__DotPromptColorYellow = ""
-            $global:__DotPromptColorReset = ""
+            $global:__dc_reset = $global:__dc_brcyan = $global:__dc_brmag = ""
+            $global:__dc_cyan  = $global:__dc_brgrn  = $global:__dc_brylw = ""
+            $global:__dc_brred = $global:__dc_brblu  = ""
         }
 
-        function global:__DotPromptGitBranch {
+        function global:__DotPromptPwd {
+            $cwd = $executionContext.SessionState.Path.CurrentLocation.Path
+            if ($cwd.StartsWith($HOME)) { $cwd = "~" + $cwd.Substring($HOME.Length) }
+            $parts = $cwd -split '[\\/]'
+            $n = $parts.Count
+            $half = [Math]::Floor(($Host.UI.RawUI.WindowSize.Width) / 2)
+            $truncate = $cwd.Length -gt $half
+            $out = [System.Text.StringBuilder]::new()
+            for ($i = 0; $i -lt $n; $i++) {
+                $p = $parts[$i]
+                if ($i -gt 0) { [void]$out.Append("$($global:__dc_cyan)/$($global:__dc_reset)") }
+                if ($i -eq 0 -or $i -eq $n - 1) {
+                    [void]$out.Append("$($global:__dc_brcyan)$p$($global:__dc_reset)")
+                } elseif ($p -eq '') {
+                    # skip empty
+                } elseif ($truncate) {
+                    [void]$out.Append("$($global:__dc_brmag)$($p[0])$($global:__dc_reset)")
+                } else {
+                    [void]$out.Append("$($global:__dc_brcyan)$p$($global:__dc_reset)")
+                }
+            }
+            return $out.ToString()
+        }
+
+        function global:__DotPromptGit {
             if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return "" }
-            $branch = git symbolic-ref --quiet --short HEAD 2>$null
+            $branch = git branch --show-current 2>$null
             if (-not $branch) {
-                $branch = git rev-parse --short HEAD 2>$null
+                $tag = git tag --points-at HEAD 2>$null | Select-Object -First 1
+                if ($tag) { $branch = "#$tag" }
+                else { $branch = "@$(git rev-parse --short HEAD 2>$null)" }
             }
-            if ($branch -and $branch.Length -gt 24) {
-                $branch = $branch.Substring(0, 21) + "..."
-            }
-            if ($branch) { return " ($branch)" }
-            return ""
-        }
-
-        function global:__DotPromptPath {
-            $path = $executionContext.SessionState.Path.CurrentLocation.Path
-            if ($path.StartsWith($HOME)) {
-                $path = "~" + $path.Substring($HOME.Length)
-            }
-            $parts = $path -split '[\\/]'
-            if ($parts.Count -gt 4) {
-                return ".../" + ($parts[-3..-1] -join "/")
-            }
-            return ($parts -join "/")
+            if ($branch.Length -gt 24) { $branch = $branch.Substring(0, 21) + "..." }
+            $stat = git --no-optional-locks status --porcelain 2>$null
+            $staged    = @($stat | Where-Object { $_ -match '^[ADMR]' }).Count
+            $dirty     = @($stat | Where-Object { $_ -match '^.[ADMR]' }).Count
+            $untracked = @($stat | Where-Object { $_ -match '^\?\?' }).Count
+            $color = $global:__dc_brgrn
+            if ($staged -gt 0 -or $dirty -gt 0 -or $untracked -gt 0) { $color = $global:__dc_brylw }
+            $out = " $color$branch$($global:__dc_reset)"
+            if ($staged     -gt 0) { $out += " $($global:__dc_brylw)+$staged$($global:__dc_reset)" }
+            if ($dirty      -gt 0) { $out += " $($global:__dc_brylw)!$dirty$($global:__dc_reset)" }
+            if ($untracked  -gt 0) { $out += " $($global:__dc_brblu)?$untracked$($global:__dc_reset)" }
+            return $out
         }
 
         function global:prompt {
-            $statusPart = ""
-            $nativeCode = if ($null -ne $LASTEXITCODE) { [int]$LASTEXITCODE } else { 0 }
-            if ((-not $?) -or ($nativeCode -ne 0)) {
-                $code = if ($nativeCode -ne 0) { $nativeCode } else { 1 }
-                $statusPart = "$($global:__DotPromptColorRed)[$code]$($global:__DotPromptColorReset) "
-            }
-
-            $path = __DotPromptPath
-            $branch = __DotPromptGitBranch
-
-            return "$statusPart$($global:__DotPromptColorBlue)$path$($global:__DotPromptColorReset)$($global:__DotPromptColorYellow)$branch$($global:__DotPromptColorReset) ❯ "
+            $last = $LASTEXITCODE
+            $arrowColor = if ($last -ne 0) { $global:__dc_brred } else { $global:__dc_brgrn }
+            $pwd = __DotPromptPwd
+            $git = __DotPromptGit
+            return "$pwd$git`n$arrowColor`u{276F}$($global:__dc_reset) "
         }

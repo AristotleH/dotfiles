@@ -1,186 +1,158 @@
-status is-interactive || exit
+# Simple prompt: truncated pwd | git info | ❯
+# Uses raw ANSI codes to avoid linter spell-check noise on color names.
+# Colors: brcyan=96, cyan=36, brmagenta=95, brgreen=92, bryellow=93,
+#         brred=91, brblue=94, brblack=90, reset=0
 
-# Offline/plugin fallback: use a simple prompt only when tide is unavailable.
-if not functions -q _tide_remove_unusable_items
-    function fish_prompt
-        set -l last_status $status
-        set_color blue
-        echo -n (prompt_pwd)
-        set_color normal
-        if test $last_status -ne 0
-            set_color red
-            echo -n " [$last_status]"
-            set_color normal
-        end
-        echo -n " ❯ "
+set -g _c_reset  \e'[0m'
+set -g _c_cyan   \e'[36m'
+set -g _c_brcyan \e'[96m'
+set -g _c_brmag  \e'[95m'
+set -g _c_brgrn  \e'[92m'
+set -g _c_brylw  \e'[93m'
+set -g _c_brred  \e'[91m'
+set -g _c_brblu  \e'[94m'
+set -g _c_brblk  \e'[90m'
+
+function _prompt_pwd
+    set -l home (string escape --style=regex $HOME)
+    set -l cwd (string replace -r "^$home" '~' $PWD)
+    set -l parts (string split / $cwd)
+    set -l n (count $parts)
+
+    # Only truncate middle dirs if the full path is wider than half the terminal
+    set -l truncate false
+    if test (string length -- $cwd) -gt (math -s0 $COLUMNS / 2)
+        set truncate true
     end
-    exit
+
+    set -l out
+    for i in (seq $n)
+        set -l p $parts[$i]
+        if test $i -eq 1 -o $i -eq $n
+            set -a out "$_c_brcyan$p"
+        else if test -z $p
+            set -a out ''
+        else if test $truncate = true
+            set -a out "$_c_brmag"(string sub -l 1 $p)
+        else
+            set -a out "$_c_brcyan$p"
+        end
+    end
+    printf '%s' (string join "$_c_cyan/$_c_reset" $out)
 end
 
-_tide_remove_unusable_items
-_tide_cache_variables
-_tide_parent_dirs
-source (functions --details _tide_pwd)
+function _prompt_git
+    set -l branch (git branch --show-current 2>/dev/null)
+    test $status -ne 0 && return  # not a git repo
 
-set -l prompt_var (string trim -r "_tide_prompt_$fish_pid")
-set -U $prompt_var # Set var here so if we erase $prompt_var, bg job won't set a uvar
+    if test -z "$branch"
+        set branch (git tag --points-at HEAD 2>/dev/null | head -1)
+        test -n "$branch" && set branch "#$branch" \
+            || set branch "@"(git rev-parse --short HEAD 2>/dev/null)
+    end
 
-set_color normal | read -l color_normal
-status fish-path | read -l fish_path
+    set branch (string shorten -m24 $branch)
 
-# _tide_repaint prevents us from creating a second background job
-function _tide_refresh_prompt --on-variable $prompt_var --on-variable COLUMNS
-    set -g _tide_repaint
+    set -l stat (git --no-optional-locks status --porcelain 2>/dev/null)
+    set -l stash (git stash list 2>/dev/null | count)
+    set -l staged (string match -r '^[ADMR]' $stat | count)
+    set -l dirty (string match -r '^.[ADMR]' $stat | count)
+    set -l untracked (string match -r '^\?\?' $stat | count)
+    set -l conflicted (string match -r '^UU' $stat | count)
+    set -l behind 0
+    set -l ahead 0
+    set -l upstream (git rev-list --count --left-right @{upstream}...HEAD 2>/dev/null)
+    if test -n "$upstream"
+        echo $upstream | read -l b a
+        set behind $b
+        set ahead $a
+    end
+
+    if test $conflicted -gt 0
+        printf '%s' $_c_brred
+    else if test $staged -gt 0 -o $dirty -gt 0 -o $untracked -gt 0
+        printf '%s' $_c_brylw
+    else
+        printf '%s' $_c_brgrn
+    end
+    printf '%s' $branch
+
+    test $behind -gt 0     && printf '%s ⇣%s' $_c_brgrn $behind
+    test $ahead -gt 0      && printf '%s ⇡%s' $_c_brgrn $ahead
+    test $stash -gt 0      && printf '%s *%s' $_c_brgrn $stash
+    test $conflicted -gt 0 && printf '%s ~%s' $_c_brred $conflicted
+    test $staged -gt 0     && printf '%s +%s' $_c_brylw $staged
+    test $dirty -gt 0      && printf '%s !%s' $_c_brylw $dirty
+    test $untracked -gt 0  && printf '%s ?%s' $_c_brblu $untracked
+end
+
+function _prompt_arrow
+    set -l last_status $argv[1]
+    test $last_status -eq 0 && printf '%s' $_c_brgrn || printf '%s' $_c_brred
+    # fish_bind_mode defaults to 'default' even without vi bindings, so we
+    # must gate on fish_key_bindings to avoid showing ❮ when not in vi mode.
+    if string match -q '*vi*' -- $fish_key_bindings
+        switch $fish_bind_mode
+            case default;             printf '❮'
+            case replace replace_one; printf '▶'
+            case visual;              printf '❮'
+            case '*';                 printf '❯'
+        end
+    else
+        printf '❯'
+    end
+    printf '%s ' $_c_reset
+end
+
+function fish_prompt
+    set -l last_status $status
+
+    if set -q _transient_prompt
+        set -e _transient_prompt
+        printf '%s' $_c_brgrn
+        test $last_status -ne 0 && printf '%s' $_c_brred
+        printf '❯%s ' $_c_reset
+        return
+    end
+
+    set -l git_info (_prompt_git)
+    if test -n "$git_info"
+        printf '%s%s %s\n' (_prompt_pwd) $_c_reset $git_info
+    else
+        printf '%s\n' (_prompt_pwd)
+    end
+    _prompt_arrow $last_status
+end
+
+function fish_right_prompt
+    set -q _transient_prompt && return
+    test $CMD_DURATION -lt 3000 && return
+    printf '%s' $_c_brblk
+    if test $CMD_DURATION -lt 60000
+        printf '%ds' (math -s0 $CMD_DURATION / 1000)
+    else if test $CMD_DURATION -lt 3600000
+        printf '%dm%ds' (math -s0 $CMD_DURATION / 60000) \
+            (math -s0 "$CMD_DURATION % 60000 / 1000")
+    else
+        printf '%dh%dm' (math -s0 $CMD_DURATION / 3600000) \
+            (math -s0 "$CMD_DURATION % 3600000 / 60000")
+    end
+    printf '%s' $_c_reset
+end
+
+# -- transient prompt ---------------------------------------------------------
+# Collapse full prompt to just the arrow when Enter is pressed.
+
+function _transient_execute
+    set -g _transient_prompt 1
     commandline -f repaint
+    commandline -f execute
 end
 
-if contains newline $_tide_left_items # two line prompt initialization
-    test "$tide_prompt_add_newline_before" = true && set -l add_newline '\n'
-
-    set_color $tide_prompt_color_frame_and_connection -b normal | read -l prompt_and_frame_color
-
-    set -l column_offset 5
-    test "$tide_left_prompt_frame_enabled" = true &&
-        set -l top_left_frame "$prompt_and_frame_color╭─" &&
-        set -l bot_left_frame "$prompt_and_frame_color╰─" &&
-        set column_offset 3
-    test "$tide_right_prompt_frame_enabled" = true &&
-        set -l top_right_frame "$prompt_and_frame_color─╮" &&
-        set -l bot_right_frame "$prompt_and_frame_color─╯" &&
-        set column_offset (math $column_offset-2)
-
-    if test "$tide_prompt_transient_enabled" = true
-        eval "
-function fish_prompt
-    _tide_status=\$status _tide_pipestatus=\$pipestatus if not set -e _tide_repaint
-        jobs -q && jobs -p | count | read -lx _tide_jobs
-        $fish_path -c \"set _tide_pipestatus \$_tide_pipestatus
-set _tide_parent_dirs \$_tide_parent_dirs
-PATH=\$(string escape \"\$PATH\") CMD_DURATION=\$CMD_DURATION fish_bind_mode=\$fish_bind_mode set $prompt_var (_tide_2_line_prompt)\" &
-        builtin disown
-
-        command kill \$_tide_last_pid 2>/dev/null
-        set -g _tide_last_pid \$last_pid
-    end
-
-    if not set -q _tide_transient
-        math \$COLUMNS-(string length -V \"\$$prompt_var[1][1]\$$prompt_var[1][3]\")+$column_offset | read -lx dist_btwn_sides
-
-        echo -n $add_newline'$top_left_frame'(string replace @PWD@ (_tide_pwd) \"\$$prompt_var[1][1]\")'$prompt_and_frame_color'
-        string repeat -Nm(math max 0, \$dist_btwn_sides-\$_tide_pwd_len) '$tide_prompt_icon_connection'
-
-        echo \"\$$prompt_var[1][3]$top_right_frame\"
-    end
-    echo -n \e\[0J\"$bot_left_frame\$$prompt_var[1][2]$color_normal \"
+function _transient_cancel
+    set -g _transient_prompt 1
+    commandline -f repaint
+    commandline ''
+    commandline -f execute
 end
 
-function fish_right_prompt
-    set -e _tide_transient || string unescape \"\$$prompt_var[1][4]$bot_right_frame$color_normal\"
-end"
-    else
-        eval "
-function fish_prompt
-    _tide_status=\$status _tide_pipestatus=\$pipestatus if not set -e _tide_repaint
-        jobs -q && jobs -p | count | read -lx _tide_jobs
-        $fish_path -c \"set _tide_pipestatus \$_tide_pipestatus
-set _tide_parent_dirs \$_tide_parent_dirs
-PATH=\$(string escape \"\$PATH\") CMD_DURATION=\$CMD_DURATION fish_bind_mode=\$fish_bind_mode set $prompt_var (_tide_2_line_prompt)\" &
-        builtin disown
-
-        command kill \$_tide_last_pid 2>/dev/null
-        set -g _tide_last_pid \$last_pid
-    end
-
-    math \$COLUMNS-(string length -V \"\$$prompt_var[1][1]\$$prompt_var[1][3]\")+$column_offset | read -lx dist_btwn_sides
-
-    echo -ns $add_newline'$top_left_frame'(string replace @PWD@ (_tide_pwd) \"\$$prompt_var[1][1]\")'$prompt_and_frame_color'
-    string repeat -Nm(math max 0, \$dist_btwn_sides-\$_tide_pwd_len) '$tide_prompt_icon_connection'
-    echo -ns \"\$$prompt_var[1][3]$top_right_frame\"\n\"$bot_left_frame\$$prompt_var[1][2]$color_normal \"
-end
-
-function fish_right_prompt
-    string unescape \"\$$prompt_var[1][4]$bot_right_frame$color_normal\"
-end"
-    end
-else # one line prompt initialization
-    # Disable add_newline to avoid VSCode shell integration newline glitch
-    # test "$tide_prompt_add_newline_before" = true && set -l add_newline '\0'
-
-    math 5 -$tide_prompt_min_cols | read -l column_offset
-    test $column_offset -ge 0 && set column_offset "+$column_offset"
-
-    if test "$tide_prompt_transient_enabled" = true
-        eval "
-function fish_prompt
-    set -lx _tide_status \$status
-    _tide_pipestatus=\$pipestatus if not set -e _tide_repaint
-        jobs -q && jobs -p | count | read -lx _tide_jobs
-        $fish_path -c \"set _tide_pipestatus \$_tide_pipestatus
-set _tide_parent_dirs \$_tide_parent_dirs
-PATH=\$(string escape \"\$PATH\") CMD_DURATION=\$CMD_DURATION fish_bind_mode=\$fish_bind_mode set $prompt_var (_tide_1_line_prompt)\" &
-        builtin disown
-
-        command kill \$_tide_last_pid 2>/dev/null
-        set -g _tide_last_pid \$last_pid
-    end
-
-    if set -q _tide_transient
-        echo -n \e\[0J
-        add_prefix= _tide_item_character
-        echo -n '$color_normal '
-    else
-        math \$COLUMNS-(string length -V \"\$$prompt_var[1][1]\$$prompt_var[1][2]\")$column_offset | read -lx dist_btwn_sides
-        printf '%s' (string replace @PWD@ (_tide_pwd) $add_newline \$$prompt_var[1][1]'$color_normal ')
-    end
-end
-
-function fish_right_prompt
-    set -e _tide_transient || string unescape \"\$$prompt_var[1][2]$color_normal\"
-end"
-    else
-        eval "
-function fish_prompt
-    _tide_status=\$status _tide_pipestatus=\$pipestatus if not set -e _tide_repaint
-        jobs -q && jobs -p | count | read -lx _tide_jobs
-        $fish_path -c \"set _tide_pipestatus \$_tide_pipestatus
-set _tide_parent_dirs \$_tide_parent_dirs
-PATH=\$(string escape \"\$PATH\") CMD_DURATION=\$CMD_DURATION fish_bind_mode=\$fish_bind_mode set $prompt_var (_tide_1_line_prompt)\" &
-        builtin disown
-
-        command kill \$_tide_last_pid 2>/dev/null
-        set -g _tide_last_pid \$last_pid
-    end
-
-    math \$COLUMNS-(string length -V \"\$$prompt_var[1][1]\$$prompt_var[1][2]\")$column_offset | read -lx dist_btwn_sides
-    printf '%s' (string replace @PWD@ (_tide_pwd) $add_newline \$$prompt_var[1][1]'$color_normal ')
-end
-
-function fish_right_prompt
-    string unescape \"\$$prompt_var[1][2]$color_normal\"
-end"
-    end
-end
-
-# Inheriting instead of evaling because here load time is more important than runtime
-function _tide_on_fish_exit --on-event fish_exit --inherit-variable prompt_var
-    set -e $prompt_var
-end
-
-if test "$tide_prompt_transient_enabled" = true
-    function _tide_enter_transient
-        # If the commandline will be executed or is empty, and the pager is not open
-        # Pager open usually means selecting, not running
-        # Can be untrue, but it's better than the alternative
-        if commandline --is-valid || test -z "$(commandline)" && not commandline --paging-mode
-            set -g _tide_transient
-            set -g _tide_repaint
-            commandline -f repaint
-        end
-        commandline -f execute
-    end
-
-    bind \r _tide_enter_transient
-    bind \n _tide_enter_transient
-    bind -M insert \r _tide_enter_transient
-    bind -M insert \n _tide_enter_transient
-end

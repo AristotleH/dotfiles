@@ -14,7 +14,8 @@ _autocomplete_tab_setup() {
   bindkey              '^I' menu-select
   bindkey "$terminfo[kcbt]" menu-select
 
-  # Inside the menu: Tab cycles forward, Shift-Tab cycles backward
+  # menuselect keymap comes from zsh/complist; load it if not yet present.
+  zmodload zsh/complist 2>/dev/null
   bindkey -M menuselect              '^I' menu-complete
   bindkey -M menuselect "$terminfo[kcbt]" reverse-menu-complete
 

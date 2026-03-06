@@ -18,7 +18,6 @@ FISH_DIR = REPO_ROOT / "dot_config" / "fish"
 CONFIG_FISH = FISH_DIR / "config.fish"
 CONF_D = FISH_DIR / "conf.d"
 FUNCTIONS_DIR = FISH_DIR / "functions"
-FISH_PLUGINS = FISH_DIR / "fish_plugins"
 
 
 def test_config_fish_exists():
@@ -50,34 +49,6 @@ def test_conf_d_exists():
 def test_functions_dir_exists():
     """functions directory must exist."""
     assert FUNCTIONS_DIR.is_dir(), f"{FUNCTIONS_DIR} not found"
-
-
-def test_fish_plugins_exists():
-    """fish_plugins must exist (fisher plugin list)."""
-    assert FISH_PLUGINS.is_file(), f"{FISH_PLUGINS} not found"
-
-
-def test_fish_plugins_has_fisher():
-    """fish_plugins must include the fisher plugin manager."""
-    content = FISH_PLUGINS.read_text()
-    assert "jorgebucaran/fisher" in content, (
-        "fish_plugins missing jorgebucaran/fisher (plugin manager)"
-    )
-
-
-def test_fish_plugins_has_tide():
-    """fish_plugins must include the tide prompt."""
-    content = FISH_PLUGINS.read_text()
-    assert "ilancosman/tide" in content, (
-        "fish_plugins missing ilancosman/tide (prompt theme)"
-    )
-
-
-def test_fish_plugins_no_blank_lines():
-    """fish_plugins should not have blank lines (fisher convention)."""
-    lines = FISH_PLUGINS.read_text().splitlines()
-    blank = [i + 1 for i, l in enumerate(lines) if not l.strip()]
-    assert not blank, f"fish_plugins has blank lines at: {blank}"
 
 
 def test_conf_d_hand_managed_files_have_shebang():
@@ -176,11 +147,7 @@ def test_fish_syntax():
 
     all_files = [CONFIG_FISH]
     all_files += sorted(CONF_D.glob("*.fish"))
-    # Skip fish_prompt.fish — it relies on tide functions not available outside fish
-    all_files += [
-        f for f in sorted(FUNCTIONS_DIR.glob("*.fish"))
-        if f.name != "fish_prompt.fish"
-    ]
+    all_files += sorted(FUNCTIONS_DIR.glob("*.fish"))
 
     errors = []
     for f in all_files:
@@ -215,10 +182,6 @@ def run_all_tests():
         test_config_fish_supports_local_override,
         test_conf_d_exists,
         test_functions_dir_exists,
-        test_fish_plugins_exists,
-        test_fish_plugins_has_fisher,
-        test_fish_plugins_has_tide,
-        test_fish_plugins_no_blank_lines,
         test_conf_d_hand_managed_files_have_shebang,
         test_env_fish_disables_greeting,
         test_brew_fish_handles_all_platforms,

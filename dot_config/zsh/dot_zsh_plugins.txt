@@ -1,9 +1,5 @@
 # Completions (zsh-autocomplete calls compinit itself — do not add ez-compinit)
 zsh-users/zsh-completions kind:fpath path:src
-# Aloxaf/fzf-tab                                        # Fuzzy tab completion (disabled, using zsh-autocomplete)
-
-# Prompt theme
-romkatv/powerlevel10k
 
 # Fish-like features
 zdharma-continuum/fast-syntax-highlighting      # Command syntax highlighting

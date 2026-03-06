@@ -1,7 +1,11 @@
 tap "homebrew/bundle"
 tap "homebrew/services"
 brew "fish"
+<<<<<<< ours
 brew "fisher"
+||||||| base
+=======
+>>>>>>> theirs
 brew "tmux"
 brew "git"
 brew "gh"
