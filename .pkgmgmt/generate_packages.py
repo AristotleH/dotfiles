@@ -9,14 +9,14 @@ Usage:
 import argparse
 import yaml
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 
 def should_skip(pkg: Dict[str, Any], platform: str) -> bool:
     return platform in pkg.get('skip', [])
 
 
-def get_package_name(pkg: Dict[str, Any], platform: str) -> str:
+def get_package_name(pkg: Dict[str, Any], platform: str) -> Optional[str]:
     platform_pkg = pkg.get(platform)
     if platform_pkg and platform_pkg not in (None, 'null'):
         return platform_pkg

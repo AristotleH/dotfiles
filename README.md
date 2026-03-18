@@ -4,11 +4,12 @@ Personal dotfiles managed with [chezmoi](https://www.chezmoi.io/).
 
 ## Features
 
-- **Cross-platform**: Works on macOS, Linux (Debian/Ubuntu, Arch, Fedora), and Windows (MSYS2)
-- **Package management**: Install from an external `packages.yaml` at apply time
-- **Dual shell support**: Fish and Zsh with matching custom prompts
+- **Cross-platform**: macOS, Linux (Debian/Ubuntu, Arch, Fedora), and Windows (MSYS2)
+- **Four-shell support**: Fish, Zsh, Bash, and PowerShell from a single YAML manifest
+- **Optional package management**: Install from an external `packages.yaml` at apply time
 - **Modern CLI tools**: bat, eza, fd, fzf, ripgrep, zoxide, git-delta, and more
 - **Tmux integration**: Mouse support, OSC passthrough for modern terminals
+- **No-chezmoi bootstrap**: `bootstrap.sh` for machines where chezmoi can't be installed
 
 ## Quick Start
 
@@ -40,31 +41,15 @@ This automatically detects your platform and installs the appropriate packages.
 
 ### If You Cannot Install Chezmoi
 
-You can still use the shell setup directly from a clone of this repo:
+The included bootstrap script sets up everything without chezmoi — shell configs,
+gitconfig, tmux, neovim, and more. It works on macOS, Linux, and MSYS2.
 
 ```bash
 git clone <this-repo-url> dotfiles
-cd dotfiles
-
-# Generate cross-shell config directly into ~/.config
-python3 .shellgen/generate_shell.py --target "$HOME/.config" .shellgen/shell.yaml "$HOME/.config/shell.d"
-
-# Bash entrypoints
-cp dot_bashrc "$HOME/.bashrc"
-cp dot_bash_profile "$HOME/.bash_profile"
-
-# PowerShell profile (pwsh)
-mkdir -p "$HOME/.config/powershell"
-cp dot_config/powershell/Microsoft.PowerShell_profile.ps1 "$HOME/.config/powershell/Microsoft.PowerShell_profile.ps1"
+dotfiles/bootstrap.sh
 ```
 
-On Windows PowerShell, use the profile bridge path:
-
-```powershell
-New-Item -ItemType Directory -Force -Path "$HOME\\Documents\\PowerShell" | Out-Null
-Copy-Item private_Documents/private_PowerShell/Microsoft.PowerShell_profile.ps1 `
-  "$HOME\\Documents\\PowerShell\\Microsoft.PowerShell_profile.ps1" -Force
-```
+Requires Python 3 and PyYAML (`pip3 install pyyaml`).
 
 ## Package Management
 
@@ -79,32 +64,32 @@ outside of this repo. Set `packages.manifestPath` in your chezmoi config:
 
 If unset or the file doesn't exist, package installation is silently skipped.
 
-The `packages.yaml` format uses the same schema as before — see the test fixtures in
-[`.pkgmgmt/tests/test_generator.py`](.pkgmgmt/tests/test_generator.py) for examples.
+See the test fixtures in
+[`.pkgmgmt/tests/test_generator.py`](.pkgmgmt/tests/test_generator.py) for the `packages.yaml` schema.
 
 ## Structure
 
 ```
 .
-├── .pkgmgmt/                           # Package management system
-│   ├── packages.yaml                   # Central package manifest
-│   ├── generate_packages.py            # Package list generator
-│   └── test-environments/              # Container-based testing
+├── bootstrap.sh                        # No-chezmoi installer
+├── .shellgen/                          # Shell config generator
+│   ├── shell.yaml                      # Central shell manifest
+│   └── generate_shell.py              # YAML → Fish/Zsh/Bash/PowerShell
+├── .pkgmgmt/                           # Package management
+│   ├── generate_packages.py            # YAML → platform package lists
+│   └── test-environments/              # Docker-based integration tests
 ├── dot_config/
-│   ├── fish/                           # Fish shell configuration
-│   │   ├── config.fish                 # Main config (sources conf.d/)
-│   │   ├── conf.d/                     # Modular config files
-│   │   └── functions/                  # Custom functions
-│   ├── zsh/                            # Zsh shell configuration
-│   │   ├── dot_zshrc                   # Main config (sources .zshrc.d/)
-│   │   ├── dot_zshenv                  # Environment variables
-│   │   ├── dot_zsh_plugins.txt         # Antidote plugin list
-│   │   ├── dot_zshrc.d/                # Modular config files
-│   │   └── dot_zfunctions/             # Custom functions
-│   └── tmux/                           # Tmux configuration
+│   ├── fish/                           # Fish (config.fish, conf.d/, functions/)
+│   ├── zsh/                            # Zsh (dot_zshrc, dot_zshrc.d/, dot_zfunctions/)
+│   ├── bash/                           # Bash (bashrc.d/, functions/)
+│   ├── powershell/                     # PowerShell (profile, conf.d/, functions/)
+│   ├── tmux/                           # Tmux configuration
+│   ├── nvim/                           # Neovim configuration
+│   ├── ghostty/                        # Ghostty terminal config
+│   └── mise/                           # Mise (runtime manager) config
 ├── dot_local/bin/
-│   └── install-packages.tmpl           # Universal package installer
-└── dot_gitconfig.tmpl                  # Git configuration
+│   └── install-packages.tmpl           # Standalone package installer
+└── dot_gitconfig.tmpl                  # Git configuration template
 ```
 
 ## Configuration
@@ -113,15 +98,17 @@ The `packages.yaml` format uses the same schema as before — see the test fixtu
 
 On first run, chezmoi will prompt for:
 
-- Git email
-- Git name
+- Git email and name
+- Extra gitconfig paths (comma-separated, optional)
 - Path to an external `packages.yaml` (optional)
+- Extra shell manifest paths (optional)
 
 These are stored in chezmoi's config and used in templates.
 
 #### External Git Config
 
-You can add machine-specific or private git settings in `~/.gitconfig.local`. This file is **not** managed by chezmoi and will be included automatically.
+Add machine-specific or private git settings in `~/.gitconfig.local`.
+This file is **not** managed by chezmoi and is included automatically.
 
 Example `~/.gitconfig.local`:
 
@@ -181,7 +168,8 @@ Tmux configuration includes:
 - 256-color and RGB support
 - 1-indexed windows and panes
 
-To enable auto-attach on shell startup, set `TMUX_AUTO_ATTACH=1` in your environment (e.g., in `~/.config/zsh/.zshrc.local`).
+To enable auto-attach on shell startup, set `TMUX_AUTO_ATTACH=1` in
+your environment (e.g., in `~/.config/zsh/.zshrc.local`).
 
 ### Platform-Specific Files
 
@@ -235,38 +223,26 @@ Test your dotfiles in clean environments before deploying:
 
 See [.pkgmgmt/test-environments/README.md](.pkgmgmt/test-environments/README.md) for detailed testing documentation.
 
-### Testing the package generator
+### Running tests
 
 ```bash
-cd .pkgmgmt
-python3 tests/test_generator.py
+# Shell generator
+python3 .shellgen/tests/test_shell_generator.py
+
+# Package generator
+python3 .pkgmgmt/tests/test_generator.py
+
+# Bootstrap script
+python3 .tests/test_bootstrap.py
+
+# Shell config validation
+python3 .tests/test_zsh.py
+python3 .tests/test_fish.py
 ```
 
 ## Platform-Specific Notes
 
-### macOS
-
-- Uses Homebrew for package management
-- Includes Mac App Store apps via `mas`
-- GUI apps, fonts, and services configured via Brewfile
-
-### MSYS2 (Windows)
-
-- Uses UCRT runtime (modern standard)
-- Package prefix: `mingw-w64-ucrt-x86_64-`
-- Run in MSYS2 terminal, not Windows Command Prompt
-
-### Linux
-
-- **Debian/Ubuntu**: `bat` command is `batcat`
-- **Arch Linux**: Most packages available in official repos
-- **Fedora/RHEL**: Some modern tools may need COPR repos
-- **Raspberry Pi**: Uses same packages as Debian/Ubuntu
-
-## Resources
-
-- [chezmoi documentation](https://www.chezmoi.io/)
-- [Fish shell documentation](https://fishshell.com/docs/current/)
-- [Zsh documentation](https://zsh.sourceforge.io/Doc/)
-- [fzf](https://github.com/junegunn/fzf)
-- [Package generator](.pkgmgmt/generate_packages.py)
+- **macOS**: Packages via Homebrew (including casks and Mac App Store via `mas`)
+- **Linux**: Detected automatically — APT, Pacman, or DNF
+- **Raspberry Pi**: Uses APT packages (same as Debian/Ubuntu)
+- **MSYS2**: Uses UCRT runtime; run in MSYS2 terminal, not CMD

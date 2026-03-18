@@ -13,6 +13,8 @@ on:
       - 'dot_config/powershell/**'
       - 'dot_bashrc'
       - 'dot_bash_profile'
+      - 'dot_gitconfig.tmpl'
+      - 'bootstrap.sh'
       - 'private_Documents/private_PowerShell/**'
   pull_request:
     paths:
@@ -26,6 +28,8 @@ on:
       - 'dot_config/powershell/**'
       - 'dot_bashrc'
       - 'dot_bash_profile'
+      - 'dot_gitconfig.tmpl'
+      - 'bootstrap.sh'
       - 'private_Documents/private_PowerShell/**'
 
 jobs:
@@ -71,6 +75,25 @@ jobs:
       - name: Validate shell generator (temp dir)
         run: python3 .shellgen/tests/test_shell_sync.py
 
+  bootstrap:
+    name: Bootstrap Test
+    runs-on: ubuntu-latest
+    needs: shell-generator
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Run bootstrap tests
+        run: python3 .tests/test_bootstrap.py
+
   integration-test:
     name: Integration Test (chezmoi apply)
     runs-on: ubuntu-latest
@@ -106,7 +129,7 @@ jobs:
             name = "Test User"
             extraConfigs = ""
           [data.packages]
-            runInstalls = false
+            manifestPath = ""
           [data.shell]
             extraManifests = ""
           CFGEOF
@@ -143,7 +166,7 @@ jobs:
             name = "Test User"
             extraConfigs = ""
           [data.packages]
-            runInstalls = false
+            manifestPath = ""
           [data.shell]
             extraManifests = ""
           CFGEOF

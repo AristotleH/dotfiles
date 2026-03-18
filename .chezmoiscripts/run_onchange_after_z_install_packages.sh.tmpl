@@ -1,5 +1,5 @@
 #!/bin/sh
-{{ $manifest := .packages.manifestPath | default "" -}}
+{{ $manifest := dig "packages" "manifestPath" "" . -}}
 {{ if eq $manifest "" }}
 # No packages.manifestPath configured; skipping package installation.
 exit 0
@@ -66,8 +66,6 @@ if command -v apt-get >/dev/null 2>&1; then
         sudo apt-get update -qq
         # shellcheck disable=SC2086
         sudo apt-get install --no-upgrade -y $packages
-        sudo apt-get autoremove -y
-        sudo apt-get autoclean
     fi
 elif command -v pacman >/dev/null 2>&1; then
     if [ -f "$TMPDIR_PKG/packages-pacman.txt" ]; then

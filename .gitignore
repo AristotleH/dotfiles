@@ -19,6 +19,7 @@ env/
 
 # macOS
 .DS_Store
+dot_DS_Store
 .AppleDouble
 .LSOverride
 

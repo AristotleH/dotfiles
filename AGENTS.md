@@ -4,41 +4,40 @@ This file provides guidance to coding agents when working with this repository.
 
 ## Overview
 
-This is a chezmoi-managed dotfiles repository supporting macOS, Linux (Debian/Ubuntu, Arch, Fedora), and Windows (MSYS2). It features dual shell support (Fish with Tide, Zsh with Powerlevel10k), a shell config generator, and an optional package management system.
+Chezmoi-managed dotfiles for macOS, Linux (Debian/Ubuntu, Arch, Fedora),
+and Windows (MSYS2). Four shells (Fish, Zsh, Bash, PowerShell) are generated
+from a single YAML manifest. Optional package management installs
+platform-specific packages from an external `packages.yaml` during
+`chezmoi apply`. A `bootstrap.sh` script provides a no-chezmoi fallback.
 
 ## Common Commands
 
 ### Shell Generation
 
 ```bash
-# Edit the shell config manifest
-vim .shellgen/shell.yaml
-
 # Generate shell configs (to chezmoi source dir)
 cd .shellgen && make generate
 
-# Run shell generator tests
+# Run all shell generator tests
 cd .shellgen && make test
 ```
 
-### Shell Config Validation
+### Tests
 
 ```bash
-# Run zsh config tests
+# Shell generator (unit + sync)
+python3 .shellgen/tests/test_shell_generator.py
+python3 .shellgen/tests/test_shell_sync.py
+
+# Shell config validation
 python3 .tests/test_zsh.py
-
-# Run fish config tests
 python3 .tests/test_fish.py
-```
 
-### Package Management (optional)
+# Package generator
+python3 .pkgmgmt/tests/test_generator.py
 
-Package installation runs during `chezmoi apply` when `packages.manifestPath` is set in
-chezmoi config to a local `packages.yaml` (not stored in this repo).
-
-```bash
-# Run generator unit tests
-cd .pkgmgmt && make test
+# Bootstrap script
+python3 .tests/test_bootstrap.py
 ```
 
 ### Testing in Containers
@@ -63,15 +62,26 @@ chezmoi update    # Pull and apply latest
 
 ### Shell Config Generator (.shellgen/)
 
-Central manifest (`shell.yaml`) → Generator (`generate_shell.py`) → Shell-specific files for both Fish and Zsh.
+`shell.yaml` → `generate_shell.py` → Fish, Zsh, Bash, and PowerShell configs.
 
-The generator is idempotent and produces matching configurations for both shells from a single YAML source.
+The generator is idempotent and produces matching configurations for all
+four shells from a single YAML source. It writes to the chezmoi source
+dir by default, or directly to `~/.config` with `--target`.
 
-### Package Management System (.pkgmgmt/)
+### Package Management (.pkgmgmt/)
 
-External `packages.yaml` (provided by user, not in repo) → `generate_packages.py --manifest <path> --output-dir <tmpdir>` → platform-specific files written to a temp directory → installed immediately.
+External `packages.yaml` (not in repo) → `generate_packages.py` →
+platform-specific files written to a temp dir → installed immediately.
 
-Set `packages.manifestPath` in chezmoi config to enable. If unset or the file doesn't exist, package installation is skipped.
+Set `packages.manifestPath` in chezmoi config to enable. If unset or
+the file doesn't exist, package installation is skipped.
+
+### Bootstrap (bootstrap.sh)
+
+For machines where chezmoi can't be installed. Translates chezmoi naming
+conventions (`dot_`, `private_`), renders `dot_gitconfig.tmpl`, runs the
+shell generator in `--target` mode, and copies all config directories.
+Requires Python 3 + PyYAML.
 
 ### Chezmoi Template Conventions
 
@@ -84,13 +94,19 @@ Set `packages.manifestPath` in chezmoi config to enable. If unset or the file do
 
 **Fish** (`dot_config/fish/`): `config.fish` sources `conf.d/*.fish`, functions in `functions/`
 
-**Zsh** (`dot_config/zsh/`): `.zshrc` sources `.zshrc.d/*.zsh`, functions in `.zfunctions/`, plugins via Antidote (`.zsh_plugins.txt`)
+**Zsh** (`dot_config/zsh/`): `.zshrc` sources `.zshrc.d/*.zsh`,
+functions in `.zfunctions/`, plugins via Antidote (`.zsh_plugins.txt`)
 
-Both shells support local overrides: `config.local.fish` or `.zshrc.local` (not managed by chezmoi).
+**Bash** (`dot_config/bash/`): `dot_bashrc` sources `bashrc.d/*.bash`, functions in `functions/`
+
+**PowerShell** (`dot_config/powershell/`): Profile sources `conf.d/*.ps1`, functions in `functions/`
+
+All shells support local overrides not managed by chezmoi
+(e.g., `.zshrc.local`, `config.local.fish`, `.bashrc.local`).
 
 ### Test Organization
 
-- `.tests/` — Dotfiles validation (zsh/fish config structure, conventions)
+- `.tests/` — Dotfiles validation (zsh/fish config, bootstrap)
 - `.shellgen/tests/` — Shell generator unit + sync tests
 - `.pkgmgmt/tests/` — Package generator unit tests
 
@@ -98,9 +114,12 @@ Both shells support local overrides: `config.local.fish` or `.zshrc.local` (not 
 
 Two GitHub Actions workflows:
 
-**Dotfiles & Shell Tests** (`test-dotfiles.yml`): Runs on changes to `.tests/`, `.shellgen/`, or shell config files.
+**Dotfiles & Shell Tests** (`test-dotfiles.yml`): Runs on changes to
+`.tests/`, `.shellgen/`, or shell config files.
 
-**Package Management Tests** (`test-packages.yml`): Runs on changes to `.pkgmgmt/` or `.chezmoiscripts/`. Includes generator unit tests and a Debian Docker integration test for chezmoi initialization.
+**Package Management Tests** (`test-packages.yml`): Runs on changes to
+`.pkgmgmt/` or `.chezmoiscripts/`. Includes generator unit tests and a
+Debian Docker integration test for chezmoi initialization.
 
 ## Notes
 

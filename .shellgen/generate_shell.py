@@ -651,7 +651,7 @@ def _render_tool_init(tool: str, shell: str) -> str:
     if shell == "fish":
         return f"{tool} init fish | source"
     elif shell == "pwsh":
-        return f"(& {tool} init pwsh) | Invoke-Expression"
+        return f"Invoke-Expression (& {{ ( {tool} init powershell | Out-String) }})"
     else:  # bash, zsh
         return f'eval "$({tool} init {shell})"'
 
@@ -683,11 +683,11 @@ def _render_eval_command(cmd: str, shell: str) -> str:
     The command string may contain {shell} which is replaced with the
     target shell name.
     """
-    resolved = cmd.replace("{shell}", shell if shell != "pwsh" else "pwsh")
+    resolved = cmd.replace("{shell}", "powershell" if shell == "pwsh" else shell)
     if shell == "fish":
         return f"{resolved} | source"
     elif shell == "pwsh":
-        return f"(& {resolved}) | Invoke-Expression"
+        return f"Invoke-Expression (& {{ ( {resolved} | Out-String) }})"
     else:  # bash, zsh
         return f'eval "$({resolved})"'
 
@@ -850,18 +850,19 @@ def _generate_predicate(name: str, desc: str, predicate: str,
 
 
 def _generate_complex(name: str, desc: str, func: Dict, shell: str) -> str:
+    body_text = _resolve_body_text(func["body"], shell)
+    if not body_text:
+        return ""
+
     lines = [HEADER]
 
     if "usage" in func:
         lines.append(f"# {desc}")
         lines.append(f"# Usage: {func['usage']}")
-        lines.append(f"# Returns the exit code of the command")
+        lines.append("# Returns the exit code of the command")
     else:
         lines.append(f"# {desc}")
     lines.append("")
-
-    # Resolve body text: shell-specific, then posix (zsh/bash), then shared.
-    body_text = _resolve_body_text(func["body"], shell)
 
     if shell == "fish":
         lines.append(f"function {name}")
@@ -1061,12 +1062,15 @@ def generate_all(manifest: Dict, target: Optional[Path],
     for func in manifest.get("functions", []):
         name = func["name"]
         for shell in SHELLS:
+            func_content = generate_function(func, shell)
+            if not func_content:
+                continue
             func_ext = SHELL_FUNC_EXT[shell]
             func_dir = dirs[shell]["functions"]
             filename = f"{name}{func_ext}"
             func_path = func_dir / filename
 
-            func_path.write_text(generate_function(func, shell))
+            func_path.write_text(func_content)
             generated_files.append(func_path)
             dir_files[func_dir].append(filename)
             if not quiet:
@@ -1091,10 +1095,11 @@ def generate_all(manifest: Dict, target: Optional[Path],
             if not quiet:
                 print(f"  {mod_path}")
 
-    # Write per-directory .gitignore files
-    for d, names in dir_files.items():
-        if names:
-            _write_gitignore(d, names)
+    # Write per-directory .gitignore files (source dir only, not --target)
+    if target is None:
+        for d, names in dir_files.items():
+            if names:
+                _write_gitignore(d, names)
 
     return generated_files
 

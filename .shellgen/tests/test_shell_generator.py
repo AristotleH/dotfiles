@@ -577,7 +577,7 @@ def test_render_eval_command_with_shell_placeholder():
     assert "mise activate fish | source" == _render_eval_command(cmd, "fish")
     assert 'eval "$(mise activate zsh)"' == _render_eval_command(cmd, "zsh")
     assert 'eval "$(mise activate bash)"' == _render_eval_command(cmd, "bash")
-    assert "mise activate pwsh" in _render_eval_command(cmd, "pwsh")
+    assert "mise activate powershell" in _render_eval_command(cmd, "pwsh")
 
 
 # ---------------------------------------------------------------------------
@@ -712,7 +712,7 @@ def test_tool_init_pwsh():
     }
     result = generate_module(mod, "pwsh")
     assert "Invoke-Expression" in result
-    assert "zoxide init pwsh" in result
+    assert "zoxide init powershell" in result
 
 
 def test_custom_module_shared_body():
@@ -838,7 +838,7 @@ def test_eval_command_shell_placeholder():
     assert "mise activate fish" in generate_module(mod, "fish")
     assert "mise activate zsh" in generate_module(mod, "zsh")
     assert "mise activate bash" in generate_module(mod, "bash")
-    assert "mise activate pwsh" in generate_module(mod, "pwsh")
+    assert "mise activate powershell" in generate_module(mod, "pwsh")
 
 
 # ---------------------------------------------------------------------------
