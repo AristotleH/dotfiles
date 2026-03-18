@@ -42,5 +42,4 @@ setopt NO_hist_beep            # Don't beep when accessing non-existent history.
 setopt NO_share_history        # Don't share history between all sessions.
 
 ### Prompt
-setopt prompt_subst       # Expand parameters in prompt variables.
 setopt transient_rprompt  # Remove right prompt artifacts from prior commands.

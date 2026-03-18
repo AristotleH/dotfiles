@@ -1,3 +1,4 @@
+#!/usr/bin/env fish
 status is-interactive; or return 0
 
 # Transient prompt keybindings.
