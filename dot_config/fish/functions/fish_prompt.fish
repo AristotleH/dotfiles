@@ -117,9 +117,9 @@ function fish_prompt
 
     set -l git_info (_prompt_git)
     if test -n "$git_info"
-        printf '%s%s %s\n' (_prompt_pwd) $_c_reset $git_info
+        printf '%s%s %s ' (_prompt_pwd) $_c_reset $git_info
     else
-        printf '%s\n' (_prompt_pwd)
+        printf '%s ' (_prompt_pwd)
     end
     _prompt_arrow $last_status
 end

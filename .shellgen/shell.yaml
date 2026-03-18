@@ -308,7 +308,7 @@ modules:
             local last=$?
             local arrow_color="${__dc_brgrn}"
             (( last != 0 )) && arrow_color="${__dc_brred}"
-            PS1="$(__dot_prompt_pwd)$(__dot_prompt_git)"$'\n'"${arrow_color}❯${__dc_reset} "
+            PS1="$(__dot_prompt_pwd)$(__dot_prompt_git) ${arrow_color}❯${__dc_reset} "
         }
 
         if [[ -n "${PROMPT_COMMAND:-}" ]]; then
@@ -386,5 +386,5 @@ modules:
             $arrowColor = if ($last -ne 0) { $global:__dc_brred } else { $global:__dc_brgrn }
             $pwd = __DotPromptPwd
             $git = __DotPromptGit
-            return "$pwd$git`n$arrowColor`u{276F}$($global:__dc_reset) "
+            return "$pwd$git $arrowColor`u{276F}$($global:__dc_reset) "
         }
