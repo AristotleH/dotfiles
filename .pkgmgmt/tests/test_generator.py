@@ -7,16 +7,10 @@ Or: python3 tests/test_generator.py
 """
 
 import sys
-import yaml
 from pathlib import Path
 
-# Add parent directory to path to import the generator
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from generate_packages import (
-    should_skip,
-    generate_brewfile,
-    generate_package_list
-)
+from generate_packages import should_skip, generate_brewfile, generate_package_list
 
 
 def test_should_skip():

@@ -4,14 +4,10 @@ on:
   push:
     paths:
       - '.pkgmgmt/**'
-      - 'dot_config/Brewfile_darwin'
-      - 'dot_config/packages-*.txt.tmpl'
       - '.chezmoiscripts/**'
   pull_request:
     paths:
       - '.pkgmgmt/**'
-      - 'dot_config/Brewfile_darwin'
-      - 'dot_config/packages-*.txt.tmpl'
       - '.chezmoiscripts/**'
 
 jobs:
@@ -32,19 +28,6 @@ jobs:
 
       - name: Run unit tests
         run: python3 .pkgmgmt/tests/test_generator.py
-
-      - name: Check generated files are in sync
-        run: python3 .pkgmgmt/tests/test_sync.py
-
-      - name: Validate Brewfile syntax
-        if: hashFiles('dot_config/Brewfile_darwin') != ''
-        run: |
-          # Just check it's valid YAML-ish (has proper quotes, etc)
-          grep -E '^(brew|cask|mas|tap) "' dot_config/Brewfile_darwin > /dev/null || {
-            echo "Brewfile syntax appears invalid"
-            exit 1
-          }
-          echo "✓ Brewfile syntax looks good"
 
   integration-test-debian:
     name: Integration Test (Debian)
@@ -73,9 +56,9 @@ jobs:
             -v "$PWD:/dotfiles-src:ro" \
             chezmoi-test-debian:latest \
             bash -c 'set -e
-              echo "📦 Copying dotfiles repository..."
+              echo "Copying dotfiles repository..."
               cp -r /dotfiles-src /tmp/dotfiles
-              echo "🔧 Pre-configuring chezmoi..."
+              echo "Pre-configuring chezmoi..."
               mkdir -p ~/.config/chezmoi
               cat > ~/.config/chezmoi/chezmoi.toml << "CFGEOF"
           [data.git]
@@ -83,40 +66,12 @@ jobs:
             name = "Test User"
             extraConfigs = ""
           [data.packages]
-            runInstalls = false
+            manifestPath = ""
           [data.shell]
             extraManifests = ""
           CFGEOF
-              echo "🔧 Initializing chezmoi..."
+              echo "Initializing chezmoi..."
               chezmoi init --source=/tmp/dotfiles --apply --force
-              echo "📋 Checking chezmoi status..."
+              echo "Checking chezmoi status..."
               chezmoi --source=/tmp/dotfiles status || true
-              echo "🔍 Verifying package list was generated..."
-              test -f ~/.config/packages-apt.txt || { echo "❌ packages-apt.txt not found"; exit 1; }
-              echo "✅ Chezmoi initialization successful!"
-              line_count=$(grep -v "^#" ~/.config/packages-apt.txt | grep -v "^$" | wc -l)
-              echo "📦 Found $line_count packages in APT list"
-              if [ "$line_count" -lt 5 ]; then echo "❌ Expected more packages in list"; exit 1; fi
-              echo "✅ All package checks passed!"'
-
-  test-macos:
-    runs-on: macos-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-
-      - name: Install dependencies
-        run: pip install pyyaml
-
-      - name: Validate Brewfile with Homebrew
-        run: |
-          brew bundle check --file=dot_config/Brewfile_darwin || {
-            echo "⚠️  Some packages not installed (expected on CI)"
-            exit 0
-          }
+              echo "Chezmoi initialization successful!"'

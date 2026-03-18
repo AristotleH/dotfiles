@@ -33,18 +33,12 @@ python3 .tests/test_fish.py
 
 ### Package Management (optional)
 
+Package installation runs during `chezmoi apply` when `packages.manifestPath` is set in
+chezmoi config to a local `packages.yaml` (not stored in this repo).
+
 ```bash
-# Edit the central package manifest
-vim .pkgmgmt/packages.yaml
-
-# Generate platform-specific package files
-cd .pkgmgmt && make generate
-
-# Run package tests
+# Run generator unit tests
 cd .pkgmgmt && make test
-
-# Search for package names across platforms
-.pkgmgmt/search_package.py <package-name>
 ```
 
 ### Testing in Containers
@@ -75,11 +69,9 @@ The generator is idempotent and produces matching configurations for both shells
 
 ### Package Management System (.pkgmgmt/)
 
-Central manifest (`packages.yaml`) → Generator (`generate_packages.py`) → Platform-specific files:
-- `dot_config/Brewfile_darwin` (macOS Homebrew)
-- `dot_config/packages-*.txt.tmpl` (Linux/Windows)
+External `packages.yaml` (provided by user, not in repo) → `generate_packages.py --manifest <path> --output-dir <tmpdir>` → platform-specific files written to a temp directory → installed immediately.
 
-Package auto-install is off by default (`packages.runInstalls = false` in chezmoi config). The generator is idempotent. Always commit both `packages.yaml` and generated files together.
+Set `packages.manifestPath` in chezmoi config to enable. If unset or the file doesn't exist, package installation is skipped.
 
 ### Chezmoi Template Conventions
 
@@ -100,7 +92,7 @@ Both shells support local overrides: `config.local.fish` or `.zshrc.local` (not 
 
 - `.tests/` — Dotfiles validation (zsh/fish config structure, conventions)
 - `.shellgen/tests/` — Shell generator unit + sync tests
-- `.pkgmgmt/tests/` — Package generator unit + sync tests
+- `.pkgmgmt/tests/` — Package generator unit tests
 
 ## CI/CD
 
@@ -108,7 +100,7 @@ Two GitHub Actions workflows:
 
 **Dotfiles & Shell Tests** (`test-dotfiles.yml`): Runs on changes to `.tests/`, `.shellgen/`, or shell config files.
 
-**Package Management Tests** (`test-packages.yml`): Runs on changes to `.pkgmgmt/` or package files. Includes Debian Docker integration test and macOS Brewfile validation.
+**Package Management Tests** (`test-packages.yml`): Runs on changes to `.pkgmgmt/` or `.chezmoiscripts/`. Includes generator unit tests and a Debian Docker integration test for chezmoi initialization.
 
 ## Notes
 

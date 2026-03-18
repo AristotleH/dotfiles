@@ -85,7 +85,7 @@ if [ "$REPO_SOURCE" = "local" ]; then
   extraConfigs = ""
 
 [data.packages]
-  runInstalls = false
+  manifestPath = ""
 
 [data.shell]
   extraManifests = ""
@@ -127,7 +127,7 @@ else
   extraConfigs = \"\"
 
 [data.packages]
-  runInstalls = false
+  manifestPath = ""
 
 [data.shell]
   extraManifests = \"\"

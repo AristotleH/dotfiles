@@ -1,4 +1,21 @@
 #!/bin/sh
+{{ $manifest := .packages.manifestPath | default "" -}}
+{{ if eq $manifest "" }}
+# No packages.manifestPath configured; skipping package installation.
+exit 0
+{{ end }}
+MANIFEST={{ $manifest | quote }}
+
+if [ ! -f "$MANIFEST" ]; then
+    echo "packages.manifestPath '$MANIFEST' not found; skipping package installation."
+    exit 0
+fi
+
+GENERATOR="$(chezmoi source-path)/.pkgmgmt/generate_packages.py"
+if [ ! -f "$GENERATOR" ]; then
+    echo "Package generator not found at $GENERATOR; skipping."
+    exit 0
+fi
 
 internet_available() {
     if command -v curl >/dev/null 2>&1; then
@@ -12,113 +29,64 @@ internet_available() {
     return 1
 }
 
+if ! internet_available; then
+    echo "No internet connection detected; skipping package installation."
+    exit 0
+fi
+
+TMPDIR_PKG=$(mktemp -d)
+trap 'rm -rf "$TMPDIR_PKG"' EXIT
+
+echo "Generating package lists from $MANIFEST..."
+python3 "$GENERATOR" --manifest "$MANIFEST" --output-dir "$TMPDIR_PKG"
+
 install_brew() {
-    if ! internet_available; then
-        echo "No internet connection detected. Skipping Homebrew install."
-        return 0
-    fi
     command -v brew >/dev/null 2>&1 && return 0
     echo "Installing Homebrew..."
     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 }
 
-install_brew_packages() {
-    {{ if eq .chezmoi.os "darwin" }}
-    if [ -f ~/.config/Brewfile_darwin ]; then
-        echo "Installing packages from Brewfile..."
-        brew bundle --no-upgrade --file=~/.config/Brewfile_darwin
+{{ if eq .chezmoi.os "darwin" -}}
+echo "macOS detected - installing via Homebrew"
+xcode-select --install 2>/dev/null || true
+install_brew
+if [ -f /opt/homebrew/bin/brew ]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+elif [ -f /usr/local/bin/brew ]; then
+    eval "$(/usr/local/bin/brew shellenv)"
+fi
+if [ -f "$TMPDIR_PKG/Brewfile" ]; then
+    brew bundle --no-upgrade --file="$TMPDIR_PKG/Brewfile"
+fi
+{{ else if eq .chezmoi.os "linux" -}}
+echo "Linux detected - installing via native package manager"
+if command -v apt-get >/dev/null 2>&1; then
+    if [ -f "$TMPDIR_PKG/packages-apt.txt" ]; then
+        packages=$(grep -v '^#' "$TMPDIR_PKG/packages-apt.txt" | grep -v '^$' | tr '\n' ' ')
+        sudo apt-get update -qq
+        # shellcheck disable=SC2086
+        sudo apt-get install --no-upgrade -y $packages
+        sudo apt-get autoremove -y
+        sudo apt-get autoclean
     fi
-    {{ else }}
-    : # No-op on non-Darwin systems
-    {{ end }}
-}
-
-install_linux_packages() {
-    {{ if eq .chezmoi.os "linux" }}
-    if ! internet_available; then
-        echo "No internet connection detected. Skipping Linux package installation."
-        return 0
+elif command -v pacman >/dev/null 2>&1; then
+    if [ -f "$TMPDIR_PKG/packages-pacman.txt" ]; then
+        packages=$(grep -v '^#' "$TMPDIR_PKG/packages-pacman.txt" | grep -v '^$' | tr '\n' ' ')
+        # shellcheck disable=SC2086
+        sudo pacman -S --needed --noconfirm $packages
     fi
-    # Detect package manager and use generated package list
-    if command -v apt-get >/dev/null 2>&1; then
-        # Debian/Ubuntu/Raspberry Pi
-        if [ -f ~/.config/packages-apt.txt ]; then
-            echo "Installing APT packages..."
-            packages=$(grep -v '^#' ~/.config/packages-apt.txt | grep -v '^$' | tr '\n' ' ')
-            sudo apt-get update -qq
-            # shellcheck disable=SC2086
-            sudo apt-get install --no-upgrade -y $packages
-            sudo apt-get autoremove -y
-            sudo apt-get autoclean
-        fi
-    elif command -v pacman >/dev/null 2>&1; then
-        # Arch Linux
-        if [ -f ~/.config/packages-pacman.txt ]; then
-            echo "Installing Pacman packages..."
-            packages=$(grep -v '^#' ~/.config/packages-pacman.txt | grep -v '^$' | tr '\n' ' ')
-            # shellcheck disable=SC2086
-            sudo pacman -S --needed --noconfirm $packages
-        fi
-    elif command -v dnf >/dev/null 2>&1; then
-        # Fedora/RHEL
-        if [ -f ~/.config/packages-dnf.txt ]; then
-            echo "Installing DNF packages..."
-            packages=$(grep -v '^#' ~/.config/packages-dnf.txt | grep -v '^$' | tr '\n' ' ')
-            # shellcheck disable=SC2086
-            sudo dnf install -y $packages
-        fi
-    elif [ -f /mingw64/bin/pacman ]; then
-        # MSYS2 (Windows)
-        if [ -f ~/.config/packages-msys2.txt ]; then
-            echo "Installing MSYS2 packages..."
-            packages=$(grep -v '^#' ~/.config/packages-msys2.txt | grep -v '^$' | tr '\n' ' ')
-            # shellcheck disable=SC2086
-            pacman -S --needed --noconfirm $packages
-        fi
+elif command -v dnf >/dev/null 2>&1; then
+    if [ -f "$TMPDIR_PKG/packages-dnf.txt" ]; then
+        packages=$(grep -v '^#' "$TMPDIR_PKG/packages-dnf.txt" | grep -v '^$' | tr '\n' ' ')
+        # shellcheck disable=SC2086
+        sudo dnf install -y $packages
     fi
-    {{ else }}
-    : # No-op on non-Linux systems
-    {{ end }}
-}
-
-main() {
-    {{ if .packages.runInstalls }}
-    echo "🚀 Installing packages..."
-    if ! internet_available; then
-        echo "⏭️  No internet connection detected; skipping package auto-install."
-        exit 0
+elif [ -f /mingw64/bin/pacman ]; then
+    if [ -f "$TMPDIR_PKG/packages-msys2.txt" ]; then
+        packages=$(grep -v '^#' "$TMPDIR_PKG/packages-msys2.txt" | grep -v '^$' | tr '\n' ' ')
+        # shellcheck disable=SC2086
+        pacman -S --needed --noconfirm $packages
     fi
-
-    # macOS
-    {{     if eq .chezmoi.os "darwin" }}
-    echo "📦 macOS detected - installing via Homebrew"
-
-    # Install Xcode Command Line Tools (silently fail if already installed)
-    xcode-select --install 2>/dev/null || true
-
-    # Install Homebrew if not present
-    install_brew
-
-    # Set up Homebrew environment
-    if [ -f /opt/homebrew/bin/brew ]; then
-        eval "$(/opt/homebrew/bin/brew shellenv)"
-    elif [ -f /usr/local/bin/brew ]; then
-        eval "$(/usr/local/bin/brew shellenv)"
-    fi
-
-    # Install packages from Brewfile
-    install_brew_packages
-
-    # Linux
-    {{     else if eq .chezmoi.os "linux" }}
-    echo "📦 Linux detected - installing via native package manager"
-    install_linux_packages
-    {{     end }}
-
-    echo "✅ Package installation complete!"
-    {{ else }}
-    echo "⏭️  Package auto-install disabled (set packages.runInstalls=true to enable)"
-    {{ end }}
-}
-
-main
+fi
+{{ end -}}
+echo "Package installation complete."

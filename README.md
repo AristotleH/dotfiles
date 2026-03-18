@@ -5,7 +5,7 @@ Personal dotfiles managed with [chezmoi](https://www.chezmoi.io/).
 ## Features
 
 - **Cross-platform**: Works on macOS, Linux (Debian/Ubuntu, Arch, Fedora), and Windows (MSYS2)
-- **Unified package management**: Define packages once in YAML, install everywhere
+- **Package management**: Install from an external `packages.yaml` at apply time
 - **Dual shell support**: Fish and Zsh with matching custom prompts
 - **Modern CLI tools**: bat, eza, fd, fzf, ripgrep, zoxide, git-delta, and more
 - **Tmux integration**: Mouse support, OSC passthrough for modern terminals
@@ -68,37 +68,19 @@ Copy-Item private_Documents/private_PowerShell/Microsoft.PowerShell_profile.ps1 
 
 ## Package Management
 
-This setup includes a unified cross-platform package management system. Edit packages once in [`.pkgmgmt/packages.yaml`](.pkgmgmt/packages.yaml), then generate platform-specific files.
+Packages are installed during `chezmoi apply` from an external `packages.yaml` you maintain
+outside of this repo. Set `packages.manifestPath` in your chezmoi config:
 
-### Adding a new package
+```toml
+# ~/.config/chezmoi/chezmoi.toml
+[data.packages]
+  manifestPath = "/path/to/your/packages.yaml"
+```
 
-1. Edit [`.pkgmgmt/packages.yaml`](.pkgmgmt/packages.yaml):
+If unset or the file doesn't exist, package installation is silently skipped.
 
-   ```yaml
-   cli_tools:
-     - name: tool-name
-       desc: Description
-       macos: brew-name
-       msys2: mingw-w64-ucrt-x86_64-tool-name
-       apt: apt-name
-       pacman: pacman-name
-       dnf: dnf-name
-   ```
-
-2. Generate platform-specific files:
-
-   ```bash
-   ./.pkgmgmt/generate_packages.py
-   ```
-
-3. Apply changes:
-
-   ```bash
-   chezmoi apply
-   install-packages
-   ```
-
-See [.pkgmgmt/PACKAGES.md](.pkgmgmt/PACKAGES.md) for complete documentation or [.pkgmgmt/PACKAGES-QUICKREF.md](.pkgmgmt/PACKAGES-QUICKREF.md) for a quick reference.
+The `packages.yaml` format uses the same schema as before — see the test fixtures in
+[`.pkgmgmt/tests/test_generator.py`](.pkgmgmt/tests/test_generator.py) for examples.
 
 ## Structure
 
@@ -119,8 +101,7 @@ See [.pkgmgmt/PACKAGES.md](.pkgmgmt/PACKAGES.md) for complete documentation or [
 │   │   ├── dot_zsh_plugins.txt         # Antidote plugin list
 │   │   ├── dot_zshrc.d/                # Modular config files
 │   │   └── dot_zfunctions/             # Custom functions
-│   ├── tmux/                           # Tmux configuration
-│   └── packages-*.txt.tmpl             # Generated: Platform package lists
+│   └── tmux/                           # Tmux configuration
 ├── dot_local/bin/
 │   └── install-packages.tmpl           # Universal package installer
 └── dot_gitconfig.tmpl                  # Git configuration
@@ -134,7 +115,7 @@ On first run, chezmoi will prompt for:
 
 - Git email
 - Git name
-- Whether to auto-install packages
+- Path to an external `packages.yaml` (optional)
 
 These are stored in chezmoi's config and used in templates.
 
@@ -254,31 +235,11 @@ Test your dotfiles in clean environments before deploying:
 
 See [.pkgmgmt/test-environments/README.md](.pkgmgmt/test-environments/README.md) for detailed testing documentation.
 
-### Testing package changes
+### Testing the package generator
 
 ```bash
-# Edit .pkgmgmt/packages.yaml
-vim .pkgmgmt/packages.yaml
-
-# Generate and review
-./.pkgmgmt/generate_packages.py
-git diff
-
-# Run tests
 cd .pkgmgmt
 python3 tests/test_generator.py
-python3 tests/test_sync.py
-
-# Test in a container (recommended)
-./test-environments/test-chezmoi.sh debian
-```
-
-### Searching for packages
-
-Use the helper script to find package names across platforms:
-
-```bash
-./search-package.py ripgrep
 ```
 
 ## Platform-Specific Notes
@@ -308,4 +269,4 @@ Use the helper script to find package names across platforms:
 - [Fish shell documentation](https://fishshell.com/docs/current/)
 - [Zsh documentation](https://zsh.sourceforge.io/Doc/)
 - [fzf](https://github.com/junegunn/fzf)
-- [Package management documentation](.pkgmgmt/PACKAGES.md)
+- [Package generator](.pkgmgmt/generate_packages.py)
