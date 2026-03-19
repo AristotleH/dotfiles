@@ -252,8 +252,13 @@ modules:
         __dc_brred='\[\e[91m\]'
         __dc_brblu='\[\e[94m\]'
 
+        # Async git state
+        __dot_git_cache=''
+        __dot_git_cache_dir=''
+        __dot_async_pid=0
+
         __dot_prompt_pwd() {
-            local cwd="${PWD/#$HOME/~}"
+            local cwd="${PWD/#$HOME/\~}"
             local cols="${COLUMNS:-80}"
             local parts; IFS='/' read -ra parts <<< "$cwd"
             local n=${#parts[@]} truncate=0 out='' sep='' p seg
@@ -276,12 +281,64 @@ modules:
             printf '%s' "$out"
         }
 
-        __dot_prompt_git() {
-            command -v git &>/dev/null || return
-            local branch
-            branch="$(git branch --show-current 2>/dev/null)" || return
-            if [[ -z "$branch" ]]; then
-                branch="$(git tag --points-at HEAD 2>/dev/null | head -1)"
+        # Fast git repo detection (no subprocess)
+        __dot_in_git_repo() {
+            local dir="$PWD"
+            while [[ -n "$dir" ]]; do
+                [[ -e "$dir/.git" ]] && return 0
+                dir="${dir%/*}"
+            done
+            [[ -e "/.git" ]]
+        }
+
+        # Format tab-separated git data into colored prompt string
+        __dot_format_git() {
+            local IFS=$'\t'
+            local -a parts
+            read -ra parts <<< "$1"
+            (( ${#parts[@]} < 8 )) && return
+
+            local branch="${parts[0]}" ahead="${parts[1]}" behind="${parts[2]}"
+            local stash="${parts[3]}" conflicted="${parts[4]}" staged="${parts[5]}"
+            local dirty="${parts[6]}" untracked="${parts[7]}"
+
+            local color="${__dc_brgrn}"
+            (( conflicted > 0 )) && color="${__dc_brred}"
+            (( staged > 0 || dirty > 0 || untracked > 0 )) && color="${__dc_brylw}"
+
+            local out=" ${color}${branch}${__dc_reset}"
+            (( staged     > 0 )) && out+=" ${__dc_brylw}+${staged}${__dc_reset}"
+            (( dirty      > 0 )) && out+=" ${__dc_brylw}!${dirty}${__dc_reset}"
+            (( untracked  > 0 )) && out+=" ${__dc_brblu}?${untracked}${__dc_reset}"
+            printf '%s' "$out"
+        }
+
+        # Background git worker (runs in subshell)
+        __dot_async_git_worker() {
+            local dir="$1" tmpfile="$2"
+            cd "$dir" 2>/dev/null || exit 1
+            local raw
+            raw=$(git --no-optional-locks status --porcelain=v2 --branch 2>/dev/null) || exit 1
+            local branch="" ahead=0 behind=0 staged=0 dirty=0 untracked=0 conflicted=0
+            local line xy x y ab
+            while IFS= read -r line; do
+                case "$line" in
+                    "# branch.head "*)  branch="${line#\# branch.head }" ;;
+                    "# branch.ab "*)
+                        ab="${line#\# branch.ab }"
+                        ahead="${ab%% *}"; ahead="${ahead#+}"
+                        behind="${ab##* }"; behind="${behind#-}" ;;
+                    "1 "*|"2 "*)
+                        xy="${line:2:2}"
+                        x="${xy:0:1}"; y="${xy:1:1}"
+                        [[ "$x" != "." ]] && (( staged++ ))
+                        [[ "$y" != "." ]] && (( dirty++ )) ;;
+                    "u "*)  (( conflicted++ )) ;;
+                    "? "*)  (( untracked++ )) ;;
+                esac
+            done <<< "$raw"
+            if [[ "$branch" == "(detached)" ]]; then
+                branch=$(git tag --points-at HEAD 2>/dev/null | head -1)
                 if [[ -n "$branch" ]]; then
                     branch="#${branch}"
                 else
@@ -289,27 +346,51 @@ modules:
                 fi
             fi
             (( ${#branch} > 24 )) && branch="${branch:0:21}..."
-            local stat staged=0 dirty=0 untracked=0
-            stat="$(git --no-optional-locks status --porcelain 2>/dev/null)"
-            while IFS= read -r line; do
-                [[ "$line" =~ ^[ADMR] ]] && (( staged++ ))
-                [[ "$line" =~ ^.[ADMR] ]] && (( dirty++ ))
-                [[ "$line" =~ ^\?\? ]] && (( untracked++ ))
-            done <<< "$stat"
-            local color="${__dc_brgrn}"
-            (( staged > 0 || dirty > 0 || untracked > 0 )) && color="${__dc_brylw}"
-            printf ' %s%s%s' "$color" "$branch" "${__dc_reset}"
-            (( staged     > 0 )) && printf ' %s+%d%s' "${__dc_brylw}" "$staged"     "${__dc_reset}"
-            (( dirty      > 0 )) && printf ' %s!%d%s' "${__dc_brylw}" "$dirty"      "${__dc_reset}"
-            (( untracked  > 0 )) && printf ' %s?%d%s' "${__dc_brblu}" "$untracked"  "${__dc_reset}"
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' \
+                "$branch" "$ahead" "$behind" "0" "$conflicted" "$staged" "$dirty" "$untracked" \
+                > "$tmpfile"
+        }
+
+        __dot_async_git_start() {
+            # Kill previous background job if still running
+            if (( __dot_async_pid > 0 )); then
+                kill "$__dot_async_pid" 2>/dev/null
+                wait "$__dot_async_pid" 2>/dev/null
+                __dot_async_pid=0
+            fi
+
+            __dot_in_git_repo || { __dot_git_cache=''; __dot_git_cache_dir="$PWD"; return; }
+
+            __dot_async_git_worker "$PWD" "/tmp/.bash_git_$$" &
+            __dot_async_pid=$!
+            disown "$__dot_async_pid" 2>/dev/null
         }
 
         __dot_prompt_precmd() {
             local last=$?
+
+            # Read async result if available
+            local f="/tmp/.bash_git_$$"
+            if [[ -f "$f" ]]; then
+                __dot_git_cache=$(__dot_format_git "$(<"$f")")
+                rm -f "$f"
+                __dot_git_cache_dir="$PWD"
+            fi
+
+            # Clear stale cache on directory change
+            if [[ "${__dot_git_cache_dir}" != "$PWD" ]]; then
+                __dot_git_cache=''
+            fi
+
             local arrow_color="${__dc_brgrn}"
             (( last != 0 )) && arrow_color="${__dc_brred}"
-            PS1="$(__dot_prompt_pwd)$(__dot_prompt_git) ${arrow_color}❯${__dc_reset} "
+            PS1="$(__dot_prompt_pwd)${__dot_git_cache} ${arrow_color}❯${__dc_reset} "
+
+            # Start async git computation for next prompt
+            __dot_async_git_start
         }
+
+        trap 'rm -f "/tmp/.bash_git_$$"' EXIT
 
         if [[ -n "${PROMPT_COMMAND:-}" ]]; then
             PROMPT_COMMAND="__dot_prompt_precmd; ${PROMPT_COMMAND}"

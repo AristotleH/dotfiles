@@ -54,6 +54,26 @@ jobs:
       - name: Validate shell entrypoints
         run: python3 .tests/test_shell_entrypoints.py
 
+  prompt-speed:
+    name: Prompt Speed Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: |
+          pip install pyyaml
+          sudo apt-get update && sudo apt-get install -y fish strace
+
+      - name: Run prompt speed tests
+        run: python3 .tests/test_prompt_speed.py
+
   shell-generator:
     name: Shell Generator Tests
     runs-on: ubuntu-latest
