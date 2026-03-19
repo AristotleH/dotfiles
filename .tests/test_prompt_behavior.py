@@ -16,6 +16,8 @@ from pathlib import Path
 
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 BASH_PROMPT_RE = re.compile(r"\\\[|\\\]|\\e\[[0-9;]*m")
+ZSH_PROMPT_RE = re.compile(r"%F\{[^}]+\}|%f")
+OSC_RE = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_DIR = Path.home() / ".config"
 CONFIG_DIR = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_CONFIG_DIR
@@ -38,6 +40,8 @@ def shell_available(shell: str) -> bool:
 
 def strip_ansi(text: str) -> str:
     text = BASH_PROMPT_RE.sub("", text)
+    text = ZSH_PROMPT_RE.sub("", text)
+    text = OSC_RE.sub("", text)
     return ANSI_RE.sub("", text)
 
 
