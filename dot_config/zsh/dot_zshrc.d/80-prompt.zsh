@@ -10,24 +10,80 @@ setopt PROMPT_SUBST
 
 # -- pwd truncation -----------------------------------------------------------
 
+_prompt_parts_length() {
+  local total=0 part
+  for part in "$@"; do
+    (( total += ${#part} ))
+  done
+  (( $# > 1 )) && (( total += $# - 1 ))
+  printf '%s' "$total"
+}
+
+_prompt_truncate_tail() {
+  local text="$1"
+  local keep="$2"
+  if (( keep <= 1 )); then
+    printf '…'
+    return
+  fi
+  local tail_len=$(( keep - 1 ))
+  if (( tail_len >= ${#text} )); then
+    printf '%s' "$text"
+    return
+  fi
+  printf '…%s' "${text[-$tail_len,-1]}"
+}
+
 _prompt_pwd() {
   local cwd="${PWD/#$HOME/~}"
-  local -a parts=("${(@s:/:)cwd}")
-  local n=${#parts}
-  local truncate=0
-  (( ${#cwd} > COLUMNS / 2 )) && truncate=1
+  local cols=${COLUMNS:-80}
+  local budget=$(( cols - 12 ))
+  (( budget < 10 )) && budget=10
 
-  local out='' sep='' p seg i
+  local -a parts display_parts
+  parts=("${(@s:/:)cwd}")
+  display_parts=("${parts[@]}")
+  local n=${#display_parts}
+  local length=$(_prompt_parts_length "${display_parts[@]}")
+  local i part other keep first
+
+  for (( i=2; i<n && length>budget; i++ )); do
+    part="${display_parts[$i]}"
+    if [[ -n "$part" && ${#part} -gt 1 ]]; then
+      display_parts[$i]="${part[1]}"
+      length=$(_prompt_parts_length "${display_parts[@]}")
+    fi
+  done
+
+  if (( length > budget && n > 0 )); then
+    other=0
+    if (( n > 1 )); then
+      other=$(_prompt_parts_length "${display_parts[@]:0:n-1}")
+    fi
+    keep=$(( budget - other - 1 ))
+    (( keep < 1 )) && keep=1
+    display_parts[$n]="$(_prompt_truncate_tail "${display_parts[$n]}" "$keep")"
+    length=$(_prompt_parts_length "${display_parts[@]}")
+  fi
+
+  if (( length > budget && n > 0 )); then
+    first="${display_parts[1]}"
+    if [[ -n "$first" && "$first" != '~' && ${#first} -gt 1 ]]; then
+      display_parts[1]="${first[1]}"
+    fi
+  fi
+
+  local out='' sep='' p seg
   for (( i=1; i<=n; i++ )); do
-    p="${parts[$i]}"
+    p="${display_parts[$i]}"
     if (( i == 1 || i == n )); then
       seg="%F{14}${p}%f"
     elif [[ -z "$p" ]]; then
       seg=''
-    elif (( truncate )); then
-      seg="%F{13}${p[1]}%f"
-    else
+    elif [[ "$p" == "${parts[$i]}" ]]; then
       seg="%F{14}${p}%f"
+    else
+      seg="%F{13}${p}%f"
     fi
     out+="${sep}${seg}"
     sep="%F{6}/%f"

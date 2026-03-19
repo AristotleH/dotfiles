@@ -252,23 +252,78 @@ modules:
         __dc_brred='\[\e[91m\]'
         __dc_brblu='\[\e[94m\]'
 
+        __dot_prompt_cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/dot_prompt"
+
+        __dot_prompt_parts_length() {
+            local total=0 part
+            for part in "$@"; do
+                (( total += ${#part} ))
+            done
+            (( $# > 1 )) && (( total += $# - 1 ))
+            printf '%s' "$total"
+        }
+
+        __dot_prompt_truncate_tail() {
+            local text="$1"
+            local keep="$2"
+            if (( keep <= 1 )); then
+                printf '…'
+                return
+            fi
+            local tail_len=$(( keep - 1 ))
+            printf '…%s' "${text: -tail_len}"
+        }
+
         __dot_prompt_pwd() {
             local cwd="${PWD/#$HOME/~}"
             local cols="${COLUMNS:-80}"
-            local parts; IFS='/' read -ra parts <<< "$cwd"
-            local n=${#parts[@]} truncate=0 out='' sep='' p seg
-            (( ${#cwd} > cols / 2 )) && truncate=1
-            local i
+            local budget=$(( cols - 12 ))
+            (( budget < 10 )) && budget=10
+
+            local parts display_parts
+            IFS='/' read -ra parts <<< "$cwd"
+            display_parts=("${parts[@]}")
+            local n=${#display_parts[@]}
+            local length i part other keep first
+            length="$(__dot_prompt_parts_length "${display_parts[@]}")"
+
+            for (( i=1; i<n-1 && length>budget; i++ )); do
+                part="${display_parts[$i]}"
+                if [[ -n "$part" && ${#part} -gt 1 ]]; then
+                    display_parts[$i]="${part:0:1}"
+                    length="$(__dot_prompt_parts_length "${display_parts[@]}")"
+                fi
+            done
+
+            if (( length > budget && n > 0 )); then
+                other=0
+                if (( n > 1 )); then
+                    other="$(__dot_prompt_parts_length "${display_parts[@]:0:n-1}")"
+                fi
+                keep=$(( budget - other - 1 ))
+                (( keep < 1 )) && keep=1
+                display_parts[$((n-1))]="$(__dot_prompt_truncate_tail "${display_parts[$((n-1))]}" "$keep")"
+                length="$(__dot_prompt_parts_length "${display_parts[@]}")"
+            fi
+
+            if (( length > budget && n > 0 )); then
+                first="${display_parts[0]}"
+                if [[ -n "$first" && "$first" != '~' && ${#first} -gt 1 ]]; then
+                    display_parts[0]="${first:0:1}"
+                fi
+            fi
+
+            local out='' sep='' seg
             for (( i=0; i<n; i++ )); do
-                p="${parts[$i]}"
-                if (( i == 0 || i == n-1 )); then
-                    seg="${__dc_brcyan}${p}${__dc_reset}"
-                elif [[ -z "$p" ]]; then
+                part="${display_parts[$i]}"
+                if (( i == 0 || i == n - 1 )); then
+                    seg="${__dc_brcyan}${part}${__dc_reset}"
+                elif [[ -z "$part" ]]; then
                     seg=''
-                elif (( truncate )); then
-                    seg="${__dc_brmag}${p:0:1}${__dc_reset}"
+                elif [[ "$part" == "${parts[$i]}" ]]; then
+                    seg="${__dc_brcyan}${part}${__dc_reset}"
                 else
-                    seg="${__dc_brcyan}${p}${__dc_reset}"
+                    seg="${__dc_brmag}${part}${__dc_reset}"
                 fi
                 out+="${sep}${seg}"
                 sep="${__dc_cyan}/${__dc_reset}"
@@ -276,39 +331,109 @@ modules:
             printf '%s' "$out"
         }
 
-        __dot_prompt_git() {
-            command -v git &>/dev/null || return
+        __dot_prompt_git_root() {
+            local dir="$PWD"
+            while :; do
+                if [[ -e "$dir/.git" ]]; then
+                    printf '%s' "$dir"
+                    return 0
+                fi
+                [[ "$dir" == / ]] && return 1
+                dir="${dir%/*}"
+                [[ -n "$dir" ]] || dir='/'
+            done
+        }
+
+        __dot_prompt_git_cache_key() {
+            local key="$1"
+            key="${key//[^[:alnum:]_.-]/_}"
+            printf '%s' "$key"
+        }
+
+        __dot_prompt_git_build() {
+            local repo="$1"
             local branch
-            branch="$(git branch --show-current 2>/dev/null)" || return
+            branch="$(git -C "$repo" branch --show-current 2>/dev/null)" || return
             if [[ -z "$branch" ]]; then
-                branch="$(git tag --points-at HEAD 2>/dev/null | head -1)"
+                branch="$(git -C "$repo" tag --points-at HEAD 2>/dev/null | head -1)"
                 if [[ -n "$branch" ]]; then
                     branch="#${branch}"
                 else
-                    branch="@$(git rev-parse --short HEAD 2>/dev/null)"
+                    branch="@$(git -C "$repo" rev-parse --short HEAD 2>/dev/null)"
                 fi
             fi
             (( ${#branch} > 24 )) && branch="${branch:0:21}..."
-            local stat staged=0 dirty=0 untracked=0
-            stat="$(git --no-optional-locks status --porcelain 2>/dev/null)"
+
+            local stat staged=0 dirty=0 untracked=0 conflicted=0 stash=0
+            stat="$(git -C "$repo" --no-optional-locks status --porcelain 2>/dev/null)"
             while IFS= read -r line; do
                 [[ "$line" =~ ^[ADMR] ]] && (( staged++ ))
                 [[ "$line" =~ ^.[ADMR] ]] && (( dirty++ ))
                 [[ "$line" =~ ^\?\? ]] && (( untracked++ ))
+                [[ "$line" =~ ^UU ]] && (( conflicted++ ))
             done <<< "$stat"
+            stash="$(git -C "$repo" stash list 2>/dev/null | wc -l | tr -d ' ')"
+
+            local behind=0 ahead=0 upstream
+            upstream="$(git -C "$repo" rev-list --count --left-right                 @{upstream}...HEAD 2>/dev/null)"
+            if [[ -n "$upstream" ]]; then
+                behind="${upstream%%$'	'*}"
+                ahead="${upstream##*$'	'}"
+            fi
+
             local color="${__dc_brgrn}"
+            (( conflicted > 0 )) && color="${__dc_brred}"
             (( staged > 0 || dirty > 0 || untracked > 0 )) && color="${__dc_brylw}"
-            printf ' %s%s%s' "$color" "$branch" "${__dc_reset}"
-            (( staged     > 0 )) && printf ' %s+%d%s' "${__dc_brylw}" "$staged"     "${__dc_reset}"
-            (( dirty      > 0 )) && printf ' %s!%d%s' "${__dc_brylw}" "$dirty"      "${__dc_reset}"
-            (( untracked  > 0 )) && printf ' %s?%d%s' "${__dc_brblu}" "$untracked"  "${__dc_reset}"
+
+            printf '%s%s%s' "$color" "$branch" "${__dc_reset}"
+            (( behind     > 0 )) && printf ' %s⇣%d%s' "${__dc_brgrn}" "$behind"    "${__dc_reset}"
+            (( ahead      > 0 )) && printf ' %s⇡%d%s' "${__dc_brgrn}" "$ahead"     "${__dc_reset}"
+            (( stash      > 0 )) && printf ' %s*%d%s' "${__dc_brgrn}" "$stash"     "${__dc_reset}"
+            (( conflicted > 0 )) && printf ' %s~%d%s' "${__dc_brred}" "$conflicted" "${__dc_reset}"
+            (( staged     > 0 )) && printf ' %s+%d%s' "${__dc_brylw}" "$staged"    "${__dc_reset}"
+            (( dirty      > 0 )) && printf ' %s!%d%s' "${__dc_brylw}" "$dirty"     "${__dc_reset}"
+            (( untracked  > 0 )) && printf ' %s?%d%s' "${__dc_brblu}" "$untracked" "${__dc_reset}"
+        }
+
+        __dot_prompt_git_refresh_async() {
+            local repo="$1"
+            local key cache lock
+            key="$(__dot_prompt_git_cache_key "$repo")"
+            cache="$__dot_prompt_cache_dir/$key.git"
+            lock="$cache.lock"
+
+            mkdir -p "$__dot_prompt_cache_dir"
+            if ! mkdir "$lock" 2>/dev/null; then
+                return
+            fi
+
+            (
+                local tmp="$cache.tmp"
+                __dot_prompt_git_build "$repo" > "$tmp" && mv "$tmp" "$cache"
+                rmdir "$lock"
+            ) >/dev/null 2>&1 &
+        }
+
+        __dot_prompt_git() {
+            command -v git &>/dev/null || return
+            local repo key cache git_segment=''
+            repo="$(__dot_prompt_git_root)" || return
+            key="$(__dot_prompt_git_cache_key "$repo")"
+            cache="$__dot_prompt_cache_dir/$key.git"
+
+            __dot_prompt_git_refresh_async "$repo"
+            [[ -f "$cache" ]] && IFS= read -r git_segment < "$cache"
+            printf '%s' "$git_segment"
         }
 
         __dot_prompt_precmd() {
             local last=$?
             local arrow_color="${__dc_brgrn}"
+            local git_segment
             (( last != 0 )) && arrow_color="${__dc_brred}"
-            PS1="$(__dot_prompt_pwd)$(__dot_prompt_git) ${arrow_color}❯${__dc_reset} "
+            git_segment="$(__dot_prompt_git)"
+            [[ -n "$git_segment" ]] && git_segment=" ${git_segment}"
+            PS1="$(__dot_prompt_pwd)${git_segment} ${arrow_color}❯${__dc_reset} "
         }
 
         if [[ -n "${PROMPT_COMMAND:-}" ]]; then
@@ -335,25 +460,71 @@ modules:
             $global:__dc_brred = $global:__dc_brblu  = ""
         }
 
+        function global:__DotPromptPartsLength {
+            param([string[]]$Parts)
+            $total = 0
+            foreach ($part in $Parts) { $total += $part.Length }
+            if ($Parts.Count -gt 1) { $total += $Parts.Count - 1 }
+            return $total
+        }
+
+        function global:__DotPromptTruncateTail {
+            param([string]$Text, [int]$Keep)
+            if ($Keep -le 1) { return "…" }
+            $tailLength = $Keep - 1
+            if ($tailLength -ge $Text.Length) { return $Text }
+            return "…" + $Text.Substring($Text.Length - $tailLength)
+        }
+
         function global:__DotPromptPwd {
             $cwd = $executionContext.SessionState.Path.CurrentLocation.Path
             if ($cwd.StartsWith($HOME)) { $cwd = "~" + $cwd.Substring($HOME.Length) }
-            $parts = $cwd -split '[\\/]'
-            $n = $parts.Count
-            $half = [Math]::Floor(($Host.UI.RawUI.WindowSize.Width) / 2)
-            $truncate = $cwd.Length -gt $half
+            $parts = @($cwd -split '[\\/]')
+            $displayParts = @($parts)
+            $n = $displayParts.Count
+            $budget = [Math]::Max(10, $Host.UI.RawUI.WindowSize.Width - 12)
+            $length = __DotPromptPartsLength $displayParts
+
+            for ($i = 1; $i -lt $n - 1 -and $length -gt $budget; $i++) {
+                $part = $displayParts[$i]
+                if ($part.Length -gt 1) {
+                    $displayParts[$i] = $part.Substring(0, 1)
+                    $length = __DotPromptPartsLength $displayParts
+                }
+            }
+
+            if ($length -gt $budget -and $n -gt 0) {
+                $other = if ($n -gt 1) {
+                    __DotPromptPartsLength $displayParts[0..($n - 2)]
+                } else {
+                    0
+                }
+                $keep = [Math]::Max(1, $budget - $other - 1)
+                $displayParts[$n - 1] = __DotPromptTruncateTail $displayParts[$n - 1] $keep
+                $length = __DotPromptPartsLength $displayParts
+            }
+
+            if ($length -gt $budget -and $n -gt 0) {
+                $first = $displayParts[0]
+                if ($first -and $first -ne '~' -and $first.Length -gt 1) {
+                    $displayParts[0] = $first.Substring(0, 1)
+                }
+            }
+
             $out = [System.Text.StringBuilder]::new()
             for ($i = 0; $i -lt $n; $i++) {
-                $p = $parts[$i]
-                if ($i -gt 0) { [void]$out.Append("$($global:__dc_cyan)/$($global:__dc_reset)") }
+                $p = $displayParts[$i]
+                if ($i -gt 0) {
+                    [void]$out.Append("$($global:__dc_cyan)/$($global:__dc_reset)")
+                }
                 if ($i -eq 0 -or $i -eq $n - 1) {
                     [void]$out.Append("$($global:__dc_brcyan)$p$($global:__dc_reset)")
                 } elseif ($p -eq '') {
                     # skip empty
-                } elseif ($truncate) {
-                    [void]$out.Append("$($global:__dc_brmag)$($p[0])$($global:__dc_reset)")
-                } else {
+                } elseif ($p -eq $parts[$i]) {
                     [void]$out.Append("$($global:__dc_brcyan)$p$($global:__dc_reset)")
+                } else {
+                    [void]$out.Append("$($global:__dc_brmag)$p$($global:__dc_reset)")
                 }
             }
             return $out.ToString()
