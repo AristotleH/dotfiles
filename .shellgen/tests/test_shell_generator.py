@@ -1318,14 +1318,38 @@ def test_resolve_sources_file():
 
 
 def test_resolve_sources_dir():
-    """resolve_sources resolves directory to dir/shell.yaml."""
+    """resolve_sources expands directories into alphabetical YAML manifests."""
     import tempfile
     with tempfile.TemporaryDirectory() as tmpdir:
         p = Path(tmpdir)
-        yaml_path = p / "shell.yaml"
-        yaml_path.write_text("functions: []\n")
+        second = p / "20-second.yaml"
+        first = p / "10-first.yml"
+        ignored = p / "notes.txt"
+        second.write_text("functions: []\n")
+        first.write_text("functions: []\n")
+        ignored.write_text("ignore me\n")
         result = resolve_sources([str(p)])
-        assert result == [yaml_path]
+        assert result == [first, second]
+
+
+def test_resolve_sources_dir_merges_multiple_directories_in_order():
+    """resolve_sources keeps directory-local sorting and caller order."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        first_dir = root / "a"
+        second_dir = root / "b"
+        first_dir.mkdir()
+        second_dir.mkdir()
+        (first_dir / "20-second.yaml").write_text("functions: []\n")
+        (first_dir / "10-first.yaml").write_text("functions: []\n")
+        (second_dir / "30-third.yml").write_text("functions: []\n")
+        result = resolve_sources([str(first_dir), str(second_dir)])
+        assert result == [
+            first_dir / "10-first.yaml",
+            first_dir / "20-second.yaml",
+            second_dir / "30-third.yml",
+        ]
 
 
 def test_resolve_sources_missing():
@@ -1337,6 +1361,19 @@ def test_resolve_sources_missing():
         assert result == []
         assert len(caught) == 1
         assert "does not exist" in str(caught[0].message)
+
+
+def test_resolve_sources_empty_dir():
+    """resolve_sources warns when a directory has no compatible YAML manifests."""
+    import tempfile
+    import warnings as w
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with w.catch_warnings(record=True) as caught:
+            w.simplefilter("always")
+            result = resolve_sources([tmpdir])
+            assert result == []
+            assert len(caught) == 1
+            assert "No compatible YAML manifests found" in str(caught[0].message)
 
 
 # ---------------------------------------------------------------------------
