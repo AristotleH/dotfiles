@@ -34,6 +34,19 @@ _prompt_truncate_tail() {
   printf '…%s' "${text[-$tail_len,-1]}"
 }
 
+_prompt_max_width() {
+  local cols=${COLUMNS:-80}
+  local width=$(( cols - 30 ))
+  (( width < 0 )) && width=0
+  printf '%s' "$width"
+}
+
+_prompt_rendered_length() {
+  local rendered
+  rendered=$(print -P -- "$1")
+  printf '%s' "${#rendered}"
+}
+
 _prompt_segment_limit() {
   local cols=$1
   if (( cols < 40 )); then
@@ -48,9 +61,10 @@ _prompt_segment_limit() {
 }
 
 _prompt_pwd() {
+  local max_width=${1:-$(_prompt_max_width)}
   local cwd="${PWD/#$HOME/~}"
   local cols=${COLUMNS:-80}
-  local budget=$(( cols - 12 ))
+  local budget=$(( max_width - 2 ))
   (( budget < 10 )) && budget=10
 
   local -a parts display_parts
@@ -131,6 +145,7 @@ _prompt_pwd() {
 # -- git status ---------------------------------------------------------------
 
 _prompt_git() {
+  local max_branch=${1:-24}
   local branch
   branch=$(git branch --show-current 2>/dev/null) || return
 
@@ -142,7 +157,8 @@ _prompt_git() {
       branch="@$(git rev-parse --short HEAD 2>/dev/null)"
     fi
   fi
-  (( ${#branch} > 24 )) && branch="${branch[1,21]}..."
+  (( max_branch < 4 )) && return
+  (( ${#branch} > max_branch )) && branch="$(_prompt_truncate_tail "$branch" "$max_branch")"
 
   local stat stash staged dirty untracked conflicted
   stat=$(git --no-optional-locks status --porcelain 2>/dev/null)
@@ -190,10 +206,19 @@ _prompt_last_status=0
 _prompt_cmd_start=$SECONDS
 
 _prompt_build() {
-  local last=$1 pwd_str git_str arrow_str
-  pwd_str=$(_prompt_pwd)
-  git_str=$(_prompt_git)
+  local last=$1 max_width pwd_str git_str arrow_str pwd_len arrow_len git_branch_budget
+  max_width=$(_prompt_max_width)
+  pwd_str=$(_prompt_pwd "$max_width")
   arrow_str=$(_prompt_arrow "$last")
+
+  pwd_len=$(_prompt_rendered_length "$pwd_str")
+  arrow_len=$(_prompt_rendered_length "$arrow_str")
+  git_branch_budget=$(( max_width - pwd_len - arrow_len - 2 ))
+  if (( git_branch_budget >= 4 )); then
+    git_str=$(_prompt_git "$git_branch_budget")
+  else
+    git_str=''
+  fi
 
   local p="${pwd_str}"
   [[ -n "$git_str" ]] && p+=" ${git_str}"

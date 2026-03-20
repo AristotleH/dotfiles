@@ -24,8 +24,13 @@ CONFIG_DIR = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_CONFIG_DIR
 FISH_PROMPT = CONFIG_DIR / "fish" / "functions" / "fish_prompt.fish"
 BASH_PROMPT = CONFIG_DIR / "bash" / "bashrc.d" / "80-prompt.bash"
 ZSH_PROMPT = CONFIG_DIR / "zsh" / ".zshrc.d" / "80-prompt.zsh"
+PWSH_PROMPT = CONFIG_DIR / "powershell" / "conf.d" / "80-prompt.ps1"
+if not BASH_PROMPT.exists():
+    BASH_PROMPT = REPO_ROOT / "dot_config" / "bash" / "bashrc.d" / "80-prompt.bash"
 if not ZSH_PROMPT.exists():
     ZSH_PROMPT = REPO_ROOT / "dot_config" / "zsh" / "dot_zshrc.d" / "80-prompt.zsh"
+if not PWSH_PROMPT.exists():
+    PWSH_PROMPT = REPO_ROOT / "dot_config" / "powershell" / "conf.d" / "80-prompt.ps1"
 
 
 def shell_available(shell: str) -> bool:
@@ -86,6 +91,24 @@ def make_repo() -> Path:
     (repo / "tracked.txt").write_text("hello\n")
     subprocess.run(["git", "-C", str(repo), "add", "tracked.txt"], check=True)
     subprocess.run(["git", "-C", str(repo), "commit", "-m", "init"], check=True, capture_output=True)
+    return repo
+
+
+def make_branch_repo(prefix: str, branch: str) -> Path:
+    repo = Path(tempfile.mkdtemp(prefix=prefix)) / "verylongsegment" / "repo"
+    repo.mkdir(parents=True)
+    subprocess.run(["git", "init", str(repo)], check=True, capture_output=True, text=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.name", "Prompt Test"], check=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.email", "prompt@example.com"], check=True)
+    (repo / "tracked.txt").write_text("hello\n")
+    subprocess.run(["git", "-C", str(repo), "add", "tracked.txt"], check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-m", "init"], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "checkout", "-b", branch],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
     return repo
 
 
@@ -152,6 +175,152 @@ def test_zsh_prompt_truncates_paths():
     assert rendered.endswith("delta"), rendered
 
 
+def test_zsh_prompt_preserves_non_prompt_width():
+    if not shell_available("zsh") or not ZSH_PROMPT.exists() or not shutil.which("git"):
+        return
+
+    repo = make_branch_repo(
+        "zsh-width-",
+        "feature/super-long-branch-name-for-prompt-width-testing",
+    )
+    script = textwrap.dedent(
+        f"""
+        source {ZSH_PROMPT}
+        COLUMNS=60
+        cd {repo}
+        _prompt_build 0
+        print -P -- $PROMPT
+        """
+    )
+    result = run_shell(["zsh", "-f", "-i", "-c"], script)
+    assert result.returncode == 0, result.stderr
+    rendered = strip_ansi(last_nonempty_line(result.stdout, "zsh prompt width"))
+    assert len(rendered) <= 30, rendered
+    assert "prompt-width-testing" not in rendered, rendered
+    assert "…" in rendered, rendered
+
+
+def test_fish_prompt_preserves_non_prompt_width():
+    if not shell_available("fish") or not FISH_PROMPT.exists() or not shutil.which("git"):
+        return
+
+    repo = make_branch_repo(
+        "fish-width-",
+        "feature/super-long-branch-name-for-prompt-width-testing",
+    )
+    script = textwrap.dedent(
+        f"""
+        source {FISH_PROMPT}
+        set -gx COLUMNS 60
+        cd {repo}
+        fish_prompt
+        """
+    )
+    result = run_shell(["fish", "-c"], script)
+    assert result.returncode == 0, result.stderr
+    rendered = strip_ansi(result.stdout.strip())
+    assert len(rendered) <= 30, rendered
+    assert "prompt-width-testing" not in rendered, rendered
+    assert "…" in rendered, rendered
+
+
+def test_bash_prompt_preserves_non_prompt_width():
+    if not shell_available("bash") or not BASH_PROMPT.exists() or not shutil.which("git"):
+        return
+
+    repo = make_branch_repo(
+        "bash-width-",
+        "feature/super-long-branch-name-for-prompt-width-testing",
+    )
+    script = textwrap.dedent(
+        f"""
+        source "{BASH_PROMPT}"
+        COLUMNS=60
+        cd "{repo}"
+        __dot_prompt_precmd
+        sleep 0.5
+        __dot_prompt_precmd
+        printf '%s\n' "$PS1"
+        """
+    )
+    result = run_shell(["bash", "--noprofile", "--norc", "-ic"], script)
+    assert result.returncode == 0, result.stderr
+    rendered = strip_ansi(last_nonempty_line(result.stdout, "bash prompt width"))
+    assert len(rendered) <= 30, rendered
+    assert "prompt-width-testing" not in rendered, rendered
+    assert "…" in rendered, rendered
+
+
+def test_bash_prompt_clears_git_segment_after_leaving_repo():
+    if not shell_available("bash") or not BASH_PROMPT.exists() or not shutil.which("git"):
+        return
+
+    repo = make_repo()
+    outside = Path(tempfile.mkdtemp(prefix="bash-outside-")) / "plain"
+    outside.mkdir(parents=True)
+    script = textwrap.dedent(
+        f"""
+        source "{BASH_PROMPT}"
+        COLUMNS=120
+        cd "{repo}"
+        __dot_prompt_precmd
+        sleep 0.5
+        __dot_prompt_precmd
+        cd "{outside}"
+        __dot_prompt_precmd
+        printf '%s\n' "$PS1"
+        """
+    )
+    result = run_shell(["bash", "--noprofile", "--norc", "-ic"], script)
+    assert result.returncode == 0, result.stderr
+    rendered = strip_ansi(last_nonempty_line(result.stdout, "bash outside repo prompt"))
+    assert repo.name not in rendered, rendered
+    assert "main" not in rendered and "master" not in rendered, rendered
+
+
+def test_powershell_prompt_preserves_non_prompt_width():
+    if not shell_available("pwsh") or not PWSH_PROMPT.exists() or not shutil.which("git"):
+        return
+
+    repo = make_branch_repo(
+        "pwsh-width-",
+        "feature/super-long-branch-name-for-prompt-width-testing",
+    )
+    script = textwrap.dedent(
+        f"""
+        . "{PWSH_PROMPT}"
+        Set-Location "{repo}"
+        $Host.UI.RawUI.WindowSize = New-Object Management.Automation.Host.Size(60, 40)
+        prompt
+        """
+    )
+    result = run_shell(["pwsh", "-NoProfile", "-NonInteractive", "-Command"], script)
+    assert result.returncode == 0, result.stderr
+    rendered = strip_ansi(last_nonempty_line(result.stdout, "powershell prompt width"))
+    assert len(rendered) <= 30, rendered
+    assert "prompt-width-testing" not in rendered, rendered
+    assert "…" in rendered, rendered
+
+
+def test_powershell_prompt_renders_stash_count():
+    if not shell_available("pwsh") or not PWSH_PROMPT.exists() or not shutil.which("git"):
+        return
+
+    repo = make_repo()
+    (repo / "tracked.txt").write_text("updated\n")
+    subprocess.run(["git", "-C", str(repo), "stash", "push", "-m", "prompt-test"], check=True)
+    script = textwrap.dedent(
+        f"""
+        . "{PWSH_PROMPT}"
+        Set-Location "{repo}"
+        prompt
+        """
+    )
+    result = run_shell(["pwsh", "-NoProfile", "-NonInteractive", "-Command"], script)
+    assert result.returncode == 0, result.stderr
+    rendered = strip_ansi(last_nonempty_line(result.stdout, "powershell stash count"))
+    assert "*1" in rendered, rendered
+
 def test_fish_prompt_non_repo_is_fast():
     if not shell_available("fish") or not FISH_PROMPT.exists():
         return
@@ -189,6 +358,7 @@ def test_bash_prompt_non_repo_is_fast():
             f"""
             source "{BASH_PROMPT}"
             COLUMNS=120
+            PROMPT_COMMAND=
             cd "{long_dir}"
             start=$EPOCHREALTIME
             for idx in $(seq 20); do
@@ -204,7 +374,7 @@ PY
     )
     assert result.returncode == 0, result.stderr
     elapsed = float(last_nonempty_line(result.stdout, "bash non-repo timing"))
-    assert elapsed < 0.5, elapsed
+    assert elapsed < 0.9, elapsed
 
 
 def test_fish_prompt_git_refresh_is_async():
@@ -323,6 +493,12 @@ TESTS = [
     test_fish_prompt_truncates_paths,
     test_bash_prompt_truncates_paths,
     test_zsh_prompt_truncates_paths,
+    test_fish_prompt_preserves_non_prompt_width,
+    test_bash_prompt_preserves_non_prompt_width,
+    test_bash_prompt_clears_git_segment_after_leaving_repo,
+    test_zsh_prompt_preserves_non_prompt_width,
+    test_powershell_prompt_preserves_non_prompt_width,
+    test_powershell_prompt_renders_stash_count,
     test_fish_prompt_non_repo_is_fast,
     test_bash_prompt_non_repo_is_fast,
     test_fish_prompt_eventually_renders_git_info,

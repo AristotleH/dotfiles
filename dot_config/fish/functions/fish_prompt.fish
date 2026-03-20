@@ -40,6 +40,12 @@ function _prompt_truncate_tail
     printf '…%s' (string sub -s -$tail_len -- $text)
 end
 
+function _prompt_max_width
+    set -l cols $COLUMNS
+    test -n "$cols"; or set cols 80
+    printf '%s' (math "max(0, $cols - 30)")
+end
+
 function _prompt_segment_limit
     set -l cols $argv[1]
     if test $cols -lt 40
@@ -54,6 +60,8 @@ function _prompt_segment_limit
 end
 
 function _prompt_pwd
+    set -l max_width $argv[1]
+    test -n "$max_width"; or set max_width (_prompt_max_width)
     set -l home (string escape --style=regex $HOME)
     set -l cwd (string replace -r "^$home" '~' $PWD)
     set -l cols $COLUMNS
@@ -62,7 +70,7 @@ function _prompt_pwd
     set -l raw_parts (string split / $cwd)
     set -l display_parts $raw_parts
     set -l n (count $display_parts)
-    set -l budget (math "max(10, $cols - 12)")
+    set -l budget (math "max(10, $max_width - 2)")
     set -l limit (_prompt_segment_limit $cols)
 
     if test $limit -eq 0 -a $n -gt 2
@@ -148,6 +156,8 @@ end
 
 function _prompt_git_build
     set -l repo $argv[1]
+    set -l max_branch $argv[2]
+    test -n "$max_branch"; or set max_branch 24
     set -l branch (command git -C "$repo" branch --show-current 2>/dev/null)
     if test -z "$branch"
         set branch (command git -C "$repo" tag --points-at HEAD 2>/dev/null | head -1)
@@ -157,7 +167,10 @@ function _prompt_git_build
             set branch "@"(command git -C "$repo" rev-parse --short HEAD 2>/dev/null)
         end
     end
-    set branch (string shorten -m24 $branch)
+    test $max_branch -lt 4; and return
+    if test (string length -- $branch) -gt $max_branch
+        set branch (_prompt_truncate_tail $branch $max_branch)
+    end
 
     set -l stat (command git -C "$repo" --no-optional-locks status --porcelain 2>/dev/null)
     set -l stash (command git -C "$repo" stash list 2>/dev/null | count)
@@ -228,6 +241,8 @@ function _prompt_git_refresh_async
 end
 
 function _prompt_git
+    set -l max_branch $argv[1]
+    test -n "$max_branch"; or set max_branch 24
     command -sq git; or return
     set -l repo (_prompt_git_root)
     or return
@@ -241,7 +256,7 @@ function _prompt_git
     if test -f "$cache" -a -n "$head_now"
         set -l head_prev (cat "$head_cache" 2>/dev/null)
         if test "$head_now" != "$head_prev"
-            _prompt_git_build $repo > "$cache.sync"
+            _prompt_git_build $repo $max_branch > "$cache.sync"
             and mv "$cache.sync" "$cache"
             printf '%s' "$head_now" > "$head_cache"
             cat "$cache"
@@ -252,7 +267,7 @@ function _prompt_git
     _prompt_git_refresh_async $repo
 
     if test -f "$cache"
-        cat "$cache"
+        _prompt_git_build $repo $max_branch
     end
 end
 
@@ -285,11 +300,25 @@ function fish_prompt
         return
     end
 
-    set -l git_info (_prompt_git)
+    set -l max_width (_prompt_max_width)
+    set -l pwd_info (_prompt_pwd $max_width)
+    set -l pwd_plain (string replace -ra '\e\\[[0-9;]*m' '' -- $pwd_info)
+    set -l git_branch_budget \
+        (math "$max_width - "(string length -- $pwd_plain)" - 2 - 2")
+    set -l git_info
+    if test $git_branch_budget -ge 4
+        set -l repo (_prompt_git_root)
+        if test -n "$repo"
+            set git_info (_prompt_git_build $repo $git_branch_budget 2>/dev/null)
+            if test -z "$git_info"
+                set git_info (_prompt_git $git_branch_budget)
+            end
+        end
+    end
     if test -n "$git_info"
-        printf '%s%s %s ' (_prompt_pwd) $_c_reset $git_info
+        printf '%s%s %s ' $pwd_info $_c_reset $git_info
     else
-        printf '%s ' (_prompt_pwd)
+        printf '%s ' $pwd_info
     end
     _prompt_arrow $last_status
 end
