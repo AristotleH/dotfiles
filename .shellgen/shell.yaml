@@ -289,6 +289,13 @@ modules:
 
             for (( i=1; i<n-1 && length>budget; i++ )); do
                 part="${display_parts[$i]}"
+                if [[ -n "$part" && ${#part} -gt 2 ]]; then
+                    display_parts[$i]="${part:0:2}"
+                    length="$(__dot_prompt_parts_length "${display_parts[@]}")"
+                fi
+            done
+            for (( i=1; i<n-1 && length>budget; i++ )); do
+                part="${display_parts[$i]}"
                 if [[ -n "$part" && ${#part} -gt 1 ]]; then
                     display_parts[$i]="${part:0:1}"
                     length="$(__dot_prompt_parts_length "${display_parts[@]}")"

@@ -13,7 +13,6 @@ set -g _c_brred  \e'[91m'
 set -g _c_brblu  \e'[94m'
 set -g _c_brblk  \e'[90m'
 set -g __dot_prompt_cache_dir "$HOME/.cache/dot_prompt"
-
 function _prompt_path_parts_length
     set -l total 0
     for p in $argv
@@ -48,6 +47,14 @@ function _prompt_pwd
     set -l budget (math "max(10, $cols - 12)")
     set -l length (_prompt_path_parts_length $display_parts)
 
+    for i in (seq 2 (math $n - 1))
+        test $length -le $budget; and break
+        set -l seg $display_parts[$i]
+        if test -n "$seg" -a (string length -- $seg) -gt 2
+            set display_parts[$i] (string sub -l 2 -- $seg)
+            set length (_prompt_path_parts_length $display_parts)
+        end
+    end
     for i in (seq 2 (math $n - 1))
         test $length -le $budget; and break
         set -l seg $display_parts[$i]
@@ -118,10 +125,6 @@ function _prompt_git_root
     end
 end
 
-function _prompt_git_cache_key
-    string replace -ra '[^A-Za-z0-9_.-]' '_' -- $argv[1]
-end
-
 function _prompt_git_build
     set -l repo $argv[1]
     set -l branch (command git -C "$repo" branch --show-current 2>/dev/null)
@@ -169,6 +172,10 @@ function _prompt_git_build
     test $untracked -gt 0  && printf '%s ?%s' $_c_brblu $untracked
 end
 
+function _prompt_git_cache_key
+    string replace -ra '[^A-Za-z0-9_.-]' '_' -- $argv[1]
+end
+
 function _prompt_git_refresh_async
     set -l repo $argv[1]
     set -l key (_prompt_git_cache_key $repo)
@@ -180,12 +187,26 @@ function _prompt_git_refresh_async
         return
     end
 
-    set -l repo_q (string escape --style=script -- $repo)
-    set -l cache_q (string escape --style=script -- $cache)
-    set -l lock_q (string escape --style=script -- $lock)
-    set -l func_q (string escape --style=script -- (functions _prompt_git_build))
-    set -l script "set -e; $func_q; _prompt_git_build $repo_q > $cache_q.tmp; mv $cache_q.tmp $cache_q; rmdir $lock_q"
-    fish --private --command "$script" >/dev/null 2>&1 &
+    # Write a self-contained runner script: color defs + function body + invocation.
+    # This avoids passing functions/variables across process boundaries.
+    set -l runner "$__dot_prompt_cache_dir/$key.run.fish"
+    begin
+        printf 'set -g _c_reset (printf "\\033[0m")\n'
+        printf 'set -g _c_brgrn (printf "\\033[92m")\n'
+        printf 'set -g _c_brylw (printf "\\033[93m")\n'
+        printf 'set -g _c_brred (printf "\\033[91m")\n'
+        printf 'set -g _c_brblu (printf "\\033[94m")\n'
+        functions _prompt_git_build
+        printf '\n_prompt_git_build %s > %s.tmp\nand mv %s.tmp %s\nrm -f %s.tmp\nrmdir %s\nrm -f %s\n' \
+            (string escape -- $repo) \
+            (string escape -- $cache) \
+            (string escape -- $cache) \
+            (string escape -- $cache) \
+            (string escape -- $cache) \
+            (string escape -- $lock) \
+            (string escape -- $runner)
+    end > $runner
+    fish --private $runner >/dev/null 2>&1 &
 end
 
 function _prompt_git
@@ -196,7 +217,6 @@ function _prompt_git
     set -l key (_prompt_git_cache_key $repo)
     set -l cache "$__dot_prompt_cache_dir/$key.git"
     _prompt_git_refresh_async $repo
-
     if test -f "$cache"
         cat "$cache"
     end

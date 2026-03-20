@@ -49,6 +49,13 @@ _prompt_pwd() {
 
   for (( i=2; i<n && length>budget; i++ )); do
     part="${display_parts[$i]}"
+    if [[ -n "$part" && ${#part} -gt 2 ]]; then
+      display_parts[$i]="${part[1,2]}"
+      length=$(_prompt_parts_length "${display_parts[@]}")
+    fi
+  done
+  for (( i=2; i<n && length>budget; i++ )); do
+    part="${display_parts[$i]}"
     if [[ -n "$part" && ${#part} -gt 1 ]]; then
       display_parts[$i]="${part[1]}"
       length=$(_prompt_parts_length "${display_parts[@]}")
