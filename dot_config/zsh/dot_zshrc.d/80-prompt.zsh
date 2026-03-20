@@ -34,6 +34,19 @@ _prompt_truncate_tail() {
   printf '…%s' "${text[-$tail_len,-1]}"
 }
 
+_prompt_segment_limit() {
+  local cols=$1
+  if (( cols < 40 )); then
+    printf '0'
+  elif (( cols < 60 )); then
+    printf '1'
+  elif (( cols < 80 )); then
+    printf '2'
+  else
+    printf '%s' "$cols"
+  fi
+}
+
 _prompt_pwd() {
   local cwd="${PWD/#$HOME/~}"
   local cols=${COLUMNS:-80}
@@ -44,20 +57,30 @@ _prompt_pwd() {
   parts=("${(@s:/:)cwd}")
   display_parts=("${parts[@]}")
   local n=${#display_parts}
-  local length=$(_prompt_parts_length "${display_parts[@]}")
-  local i part other keep first
+  local limit=$(_prompt_segment_limit "$cols")
+  local length i part other keep start
 
-  for (( i=2; i<n && length>budget; i++ )); do
-    part="${display_parts[$i]}"
-    if [[ -n "$part" && ${#part} -gt 1 ]]; then
-      display_parts[$i]="${part[1]}"
-      length=$(_prompt_parts_length "${display_parts[@]}")
+  if (( limit == 0 && n > 2 )); then
+    if [[ "${display_parts[1]}" == '' || "${display_parts[1]}" == '~' ]]; then
+      display_parts=("${display_parts[1]}" '…' "${display_parts[$n]}")
+    else
+      display_parts=('…' "${display_parts[$n]}")
     fi
-  done
+  elif (( limit < cols )); then
+    for (( i=2; i<n; i++ )); do
+      part="${display_parts[$i]}"
+      if [[ -n "$part" && ${#part} -gt limit ]]; then
+        display_parts[$i]="${part[1,limit]}"
+      fi
+    done
+  fi
+
+  n=${#display_parts}
+  length=$(_prompt_parts_length "${display_parts[@]}")
 
   if (( length > budget && n > 2 )); then
     local -a compact_parts tail_parts candidate_parts
-    local start=1
+    start=1
     if [[ "${display_parts[1]}" == '' || "${display_parts[1]}" == '~' ]]; then
       compact_parts=("${display_parts[1]}")
       start=2
@@ -96,10 +119,8 @@ _prompt_pwd() {
       seg="%F{14}${p}%f"
     elif [[ -z "$p" ]]; then
       seg=''
-    elif [[ "$p" == '…' || ${#p} -le 1 ]]; then
-      seg="%F{13}${p}%f"
     else
-      seg="%F{14}${p}%f"
+      seg="%F{13}${p}%f"
     fi
     out+="${sep}${seg}"
     sep="%F{6}/%f"

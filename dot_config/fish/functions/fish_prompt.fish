@@ -33,7 +33,24 @@ function _prompt_truncate_tail
         return
     end
     set -l tail_len (math $keep - 1)
+    if test $tail_len -ge (string length -- $text)
+        printf '%s' $text
+        return
+    end
     printf '…%s' (string sub -s -$tail_len -- $text)
+end
+
+function _prompt_segment_limit
+    set -l cols $argv[1]
+    if test $cols -lt 40
+        printf '0'
+    else if test $cols -lt 60
+        printf '1'
+    else if test $cols -lt 80
+        printf '2'
+    else
+        printf '%s' $cols
+    end
 end
 
 function _prompt_pwd
@@ -46,16 +63,25 @@ function _prompt_pwd
     set -l display_parts $raw_parts
     set -l n (count $display_parts)
     set -l budget (math "max(10, $cols - 12)")
-    set -l length (_prompt_path_parts_length $display_parts)
+    set -l limit (_prompt_segment_limit $cols)
 
-    for i in (seq 2 (math $n - 1))
-        test $length -le $budget; and break
-        set -l seg $display_parts[$i]
-        if test -n "$seg" -a (string length -- $seg) -gt 1
-            set display_parts[$i] (string sub -l 1 -- $seg)
-            set length (_prompt_path_parts_length $display_parts)
+    if test $limit -eq 0 -a $n -gt 2
+        if test "$display_parts[1]" = '' -o "$display_parts[1]" = '~'
+            set display_parts $display_parts[1] '…' $display_parts[$n]
+        else
+            set display_parts '…' $display_parts[$n]
+        end
+    else if test $limit -lt $cols
+        for i in (seq 2 (math $n - 1))
+            set -l seg $display_parts[$i]
+            if test -n "$seg" -a (string length -- $seg) -gt $limit
+                set display_parts[$i] (string sub -l $limit -- $seg)
+            end
         end
     end
+
+    set n (count $display_parts)
+    set -l length (_prompt_path_parts_length $display_parts)
 
     if test $length -gt $budget -a $n -gt 2
         set -l compact_parts
@@ -95,10 +121,8 @@ function _prompt_pwd
             set -a out "$_c_brcyan$p"
         else if test -z "$p"
             set -a out ''
-        else if test "$p" = '…' -o (string length -- $p) -le 1
-            set -a out "$_c_brmag$p"
         else
-            set -a out "$_c_brcyan$p"
+            set -a out "$_c_brmag$p"
         end
     end
     printf '%s' (string join "$_c_cyan/$_c_reset" $out)
