@@ -271,7 +271,24 @@ modules:
                 return
             fi
             local tail_len=$(( keep - 1 ))
+            if (( tail_len >= ${#text} )); then
+                printf '%s' "$text"
+                return
+            fi
             printf '…%s' "${text: -tail_len}"
+        }
+
+        __dot_prompt_segment_limit() {
+            local cols="$1"
+            if (( cols < 40 )); then
+                printf '0'
+            elif (( cols < 60 )); then
+                printf '1'
+            elif (( cols < 80 )); then
+                printf '2'
+            else
+                printf '%s' "$cols"
+            fi
         }
 
         __dot_prompt_pwd() {
@@ -284,19 +301,30 @@ modules:
             IFS='/' read -ra parts <<< "$cwd"
             display_parts=("${parts[@]}")
             local n=${#display_parts[@]}
-            local length i part other keep first
+            local length i part other keep limit start
+            limit="$(__dot_prompt_segment_limit "$cols")"
+
+            if (( limit == 0 && n > 2 )); then
+                if [[ "${display_parts[0]}" == '' || "${display_parts[0]}" == '~' ]]; then
+                    display_parts=("${display_parts[0]}" '…' "${display_parts[$((n-1))]}")
+                else
+                    display_parts=('…' "${display_parts[$((n-1))]}")
+                fi
+            elif (( limit < cols )); then
+                for (( i=1; i<n-1; i++ )); do
+                    part="${display_parts[$i]}"
+                    if [[ -n "$part" && ${#part} -gt limit ]]; then
+                        display_parts[$i]="${part:0:limit}"
+                    fi
+                done
+            fi
+
+            n=${#display_parts[@]}
             length="$(__dot_prompt_parts_length "${display_parts[@]}")"
 
-            for (( i=1; i<n-1 && length>budget; i++ )); do
-                part="${display_parts[$i]}"
-                if [[ -n "$part" && ${#part} -gt 1 ]]; then
-                    display_parts[$i]="${part:0:1}"
-                    length="$(__dot_prompt_parts_length "${display_parts[@]}")"
-                fi
-            done
-
             if (( length > budget && n > 2 )); then
-                local compact_parts=() tail_parts candidate_parts start=0
+                local compact_parts=() tail_parts candidate_parts
+                start=0
                 if [[ "${display_parts[0]}" == '' || "${display_parts[0]}" == '~' ]]; then
                     compact_parts=("${display_parts[0]}")
                     start=1
@@ -333,10 +361,8 @@ modules:
                     seg="${__dc_brcyan}${part}${__dc_reset}"
                 elif [[ -z "$part" ]]; then
                     seg=''
-                elif [[ "$part" == '…' || ${#part} -le 1 ]]; then
-                    seg="${__dc_brmag}${part}${__dc_reset}"
                 else
-                    seg="${__dc_brcyan}${part}${__dc_reset}"
+                    seg="${__dc_brmag}${part}${__dc_reset}"
                 fi
                 out+="${sep}${seg}"
                 sep="${__dc_cyan}/${__dc_reset}"
@@ -490,22 +516,41 @@ modules:
             return "…" + $Text.Substring($Text.Length - $tailLength)
         }
 
+        function global:__DotPromptSegmentLimit {
+            param([int]$Columns)
+            if ($Columns -lt 40) { return 0 }
+            if ($Columns -lt 60) { return 1 }
+            if ($Columns -lt 80) { return 2 }
+            return $Columns
+        }
+
         function global:__DotPromptPwd {
             $cwd = $executionContext.SessionState.Path.CurrentLocation.Path
             if ($cwd.StartsWith($HOME)) { $cwd = "~" + $cwd.Substring($HOME.Length) }
             $parts = @($cwd -split '[\\/]')
             $displayParts = @($parts)
             $n = $displayParts.Count
-            $budget = [Math]::Max(10, $Host.UI.RawUI.WindowSize.Width - 12)
-            $length = __DotPromptPartsLength $displayParts
+            $cols = $Host.UI.RawUI.WindowSize.Width
+            $budget = [Math]::Max(10, $cols - 12)
+            $limit = __DotPromptSegmentLimit $cols
 
-            for ($i = 1; $i -lt $n - 1 -and $length -gt $budget; $i++) {
-                $part = $displayParts[$i]
-                if ($part.Length -gt 1) {
-                    $displayParts[$i] = $part.Substring(0, 1)
-                    $length = __DotPromptPartsLength $displayParts
+            if ($limit -eq 0 -and $n -gt 2) {
+                if ($displayParts[0] -eq '' -or $displayParts[0] -eq '~') {
+                    $displayParts = @($displayParts[0], '…', $displayParts[$n - 1])
+                } else {
+                    $displayParts = @('…', $displayParts[$n - 1])
+                }
+            } elseif ($limit -lt $cols) {
+                for ($i = 1; $i -lt $n - 1; $i++) {
+                    $part = $displayParts[$i]
+                    if ($part.Length -gt $limit) {
+                        $displayParts[$i] = $part.Substring(0, $limit)
+                    }
                 }
             }
+
+            $n = $displayParts.Count
+            $length = __DotPromptPartsLength $displayParts
 
             if ($length -gt $budget -and $n -gt 2) {
                 $compactParts = @()
@@ -549,10 +594,8 @@ modules:
                     [void]$out.Append("$($global:__dc_brcyan)$p$($global:__dc_reset)")
                 } elseif ($p -eq '') {
                     # skip empty
-                } elseif ($p -eq '…' -or $p.Length -le 1) {
-                    [void]$out.Append("$($global:__dc_brmag)$p$($global:__dc_reset)")
                 } else {
-                    [void]$out.Append("$($global:__dc_brcyan)$p$($global:__dc_reset)")
+                    [void]$out.Append("$($global:__dc_brmag)$p$($global:__dc_reset)")
                 }
             }
             return $out.ToString()
