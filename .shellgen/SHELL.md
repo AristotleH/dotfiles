@@ -8,7 +8,7 @@ A YAML-to-shell transpiler that generates idiomatic configuration files for **Fi
                           ┌──► Fish    (conf.d/*.fish, functions/*.fish)
 shell.yaml  ──┐           │
                ├─ generate_shell.py ──┼──► Zsh     (.zshrc.d/*.zsh, .zfunctions/*)
-shell.d/*.yaml ┘           │
+shell.d/*.{yaml,yml} ┘           │
                           ├──► Bash    (bashrc.d/*.bash, functions/*.bash)
                           │
                           └──► PowerShell (conf.d/*.ps1, functions/*.ps1)
@@ -44,13 +44,13 @@ python3 generate_shell.py
 python3 generate_shell.py shell.yaml ~/.config/shell.d/work.yaml
 
 # Pipe paths from stdin (one per line)
-find ~/.config/shell.d -name 'shell.yaml' | python3 generate_shell.py
+find ~/.config/shell.d -type f '(' -name '*.yaml' -o -name '*.yml' ')' | sort | python3 generate_shell.py
 
 # Mixed: positional + stdin + --target
 echo ~/.config/shell.d/work.yaml | python3 generate_shell.py shell.yaml --target ~/.config
 ```
 
-**`chezmoi apply`** runs `run_after_generate_shell.sh` which calls the generator with `--target ~/.config`, passing the main manifest and extras directory as positional args.
+**`chezmoi apply`** runs `run_after_generate_shell.sh` which calls the generator with `--target ~/.config`, passing the main manifest and any extra manifest directories as positional args. Directories are expanded to all compatible YAML files in alphabetical order.
 
 ---
 
