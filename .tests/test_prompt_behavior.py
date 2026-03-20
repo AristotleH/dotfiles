@@ -76,6 +76,26 @@ def isolated_prompt_env() -> dict[str, str]:
     return env
 
 
+def prompt_cache_paths(repo: Path, env: dict[str, str], shell_suffix: str) -> tuple[Path, Path]:
+    key = re.sub(r"[^A-Za-z0-9_.-]", "_", str(repo))
+    cache_dir = Path(env["HOME"]) / ".cache" / "dot_prompt"
+    return cache_dir / f"{key}.{shell_suffix}.git", cache_dir / f"{key}.{shell_suffix}.head"
+
+
+def wait_for_prompt_cache(cache: Path, head_cache: Path, timeout: float = 2.0) -> str:
+    deadline = time.perf_counter() + timeout
+    last_cache = ""
+    while time.perf_counter() < deadline:
+        if cache.exists():
+            last_cache = cache.read_text()
+        if last_cache and head_cache.exists():
+            return last_cache
+        time.sleep(0.05)
+    raise AssertionError(
+        f"prompt cache did not settle: cache={cache.exists()} head_cache={head_cache.exists()}"
+    )
+
+
 def make_slow_git_dir() -> Path:
     real_git = shutil.which("git")
     if not real_git:
@@ -245,6 +265,9 @@ def test_fish_prompt_preserves_non_prompt_width():
         env=env,
     )
     assert warm.returncode == 0, warm.stderr
+    cache, head_cache = prompt_cache_paths(repo, env, "fish")
+    cache_text = wait_for_prompt_cache(cache, head_cache)
+    assert "…" in strip_ansi(cache_text), cache_text
 
     script = textwrap.dedent(
         f"""
@@ -505,6 +528,9 @@ def test_fish_prompt_uses_cached_git_segment_without_sync_rebuild():
         env=warm_env,
     )
     assert warm.returncode == 0, warm.stderr
+    cache, head_cache = prompt_cache_paths(repo, warm_env, "fish")
+    cache_text = wait_for_prompt_cache(cache, head_cache)
+    assert "…" in strip_ansi(cache_text), cache_text
 
     env = warm_env.copy()
     env["PATH"] = os.pathsep.join([str(slow_git_dir), env.get("PATH", "")])
