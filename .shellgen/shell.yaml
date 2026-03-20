@@ -360,7 +360,7 @@ modules:
         __dot_prompt_git_cache_key() {
             local key="$1"
             key="${key//[^[:alnum:]_.-]/_}"
-            printf '%s' "$key"
+            printf '%s.bash' "$key"
         }
 
         __dot_prompt_git_build() {

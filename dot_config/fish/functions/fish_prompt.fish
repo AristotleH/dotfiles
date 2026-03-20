@@ -119,7 +119,7 @@ function _prompt_git_root
 end
 
 function _prompt_git_cache_key
-    string replace -ra '[^A-Za-z0-9_.-]' '_' -- $argv[1]
+    printf '%s.fish' (string replace -ra '[^A-Za-z0-9_.-]' '_' -- $argv[1])
 end
 
 function _prompt_git_build
@@ -167,6 +167,7 @@ function _prompt_git_build
     test $staged -gt 0     && printf '%s +%s' $_c_brylw $staged
     test $dirty -gt 0      && printf '%s !%s' $_c_brylw $dirty
     test $untracked -gt 0  && printf '%s ?%s' $_c_brblu $untracked
+    true
 end
 
 function _prompt_git_refresh_async
@@ -180,12 +181,26 @@ function _prompt_git_refresh_async
         return
     end
 
-    set -l repo_q (string escape --style=script -- $repo)
-    set -l cache_q (string escape --style=script -- $cache)
-    set -l lock_q (string escape --style=script -- $lock)
-    set -l func_q (string escape --style=script -- (functions _prompt_git_build))
-    set -l script "set -e; $func_q; _prompt_git_build $repo_q > $cache_q.tmp; mv $cache_q.tmp $cache_q; rmdir $lock_q"
-    fish --private --command "$script" >/dev/null 2>&1 &
+    set -l head_cache "$__dot_prompt_cache_dir/$key.head"
+    set -l script "$__dot_prompt_cache_dir/$key.worker.fish"
+    set -l repo_q (string escape -- $repo)
+    set -l cache_q (string escape -- $cache)
+    set -l lock_q (string escape -- $lock)
+    set -l head_q (string escape -- $head_cache)
+    printf '%s\n' \
+        "set _c_reset  \\e'[0m'" \
+        "set _c_brgrn  \\e'[92m'" \
+        "set _c_brylw  \\e'[93m'" \
+        "set _c_brred  \\e'[91m'" \
+        "set _c_brblu  \\e'[94m'" \
+        (functions _prompt_git_build) \
+        "_prompt_git_build $repo_q > $cache_q.tmp" \
+        "and mv $cache_q.tmp $cache_q" \
+        "cat $repo_q/.git/HEAD > $head_q 2>/dev/null" \
+        "rmdir $lock_q" \
+        "rm -f (status filename)" \
+        > $script
+    fish --private $script >/dev/null 2>&1 &
 end
 
 function _prompt_git
@@ -195,6 +210,21 @@ function _prompt_git
 
     set -l key (_prompt_git_cache_key $repo)
     set -l cache "$__dot_prompt_cache_dir/$key.git"
+    set -l head_cache "$__dot_prompt_cache_dir/$key.head"
+    set -l head_now (cat "$repo/.git/HEAD" 2>/dev/null)
+
+    # If HEAD changed since last cache, rebuild synchronously.
+    if test -f "$cache" -a -n "$head_now"
+        set -l head_prev (cat "$head_cache" 2>/dev/null)
+        if test "$head_now" != "$head_prev"
+            _prompt_git_build $repo > "$cache.sync"
+            and mv "$cache.sync" "$cache"
+            printf '%s' "$head_now" > "$head_cache"
+            cat "$cache"
+            return
+        end
+    end
+
     _prompt_git_refresh_async $repo
 
     if test -f "$cache"
