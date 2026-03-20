@@ -432,6 +432,108 @@ PY
     assert elapsed < 0.18, elapsed
 
 
+def test_fish_prompt_uses_cached_git_segment_without_sync_rebuild():
+    if not shell_available("fish") or not FISH_PROMPT.exists() or not shutil.which("git"):
+        return
+
+    repo = make_branch_repo(
+        "fish-cache-",
+        "feature/super-long-branch-name-for-prompt-width-testing",
+    )
+    warm = run_shell(
+        ["fish", "-c"],
+        textwrap.dedent(
+            f"""
+            source {FISH_PROMPT}
+            set -gx COLUMNS 60
+            cd {repo}
+            fish_prompt >/dev/null
+            sleep 0.5
+            fish_prompt >/dev/null
+            """
+        ),
+        timeout=20,
+    )
+    assert warm.returncode == 0, warm.stderr
+
+    slow_git_dir = make_slow_git_dir()
+    prompt_path = os.pathsep.join([str(slow_git_dir), os.environ.get("PATH", "")])
+    start = time.perf_counter()
+    result = run_shell(
+        ["env", f"PATH={prompt_path}", "fish", "-c"],
+        textwrap.dedent(
+            f"""
+            source {FISH_PROMPT}
+            set -gx COLUMNS 60
+            cd {repo}
+            fish_prompt
+            """
+        ),
+        timeout=20,
+    )
+    elapsed = time.perf_counter() - start
+    assert result.returncode == 0, result.stderr
+    assert elapsed < 0.18, elapsed
+    rendered = strip_ansi(result.stdout.strip())
+    assert "prompt-width-testing" not in rendered, rendered
+    assert "…" in rendered, rendered
+
+
+def test_bash_prompt_uses_cached_git_segment_without_sync_rebuild():
+    if not shell_available("bash") or not BASH_PROMPT.exists() or not shutil.which("git"):
+        return
+
+    repo = make_branch_repo(
+        "bash-cache-",
+        "feature/super-long-branch-name-for-prompt-width-testing",
+    )
+    warm = run_shell(
+        ["bash", "--noprofile", "--norc", "-ic"],
+        textwrap.dedent(
+            f"""
+            source "{BASH_PROMPT}"
+            COLUMNS=60
+            cd "{repo}"
+            __dot_prompt_precmd
+            sleep 0.5
+            __dot_prompt_precmd
+            """
+        ),
+        timeout=20,
+    )
+    assert warm.returncode == 0, warm.stderr
+
+    slow_git_dir = make_slow_git_dir()
+    prompt_path = os.pathsep.join([str(slow_git_dir), os.environ.get("PATH", "")])
+    result = run_shell(
+        ["env", f"PATH={prompt_path}", "bash", "--noprofile", "--norc", "-ic"],
+        textwrap.dedent(
+            f"""
+            source "{BASH_PROMPT}"
+            COLUMNS=60
+            cd "{repo}"
+            start=$EPOCHREALTIME
+            __dot_prompt_precmd
+            end=$EPOCHREALTIME
+            printf '%s\\n' "$PS1"
+            python3 - "$start" "$end" <<'PY'
+import sys
+print(float(sys.argv[2]) - float(sys.argv[1]))
+PY
+            """
+        ),
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stderr
+    lines = [line for line in result.stdout.splitlines() if line.strip()]
+    assert len(lines) >= 2, result.stdout
+    rendered = strip_ansi(lines[-2])
+    elapsed = float(lines[-1])
+    assert elapsed < 0.18, elapsed
+    assert "prompt-width-testing" not in rendered, rendered
+    assert "…" in rendered, rendered
+
+
 def test_fish_prompt_eventually_renders_git_info():
     if not shell_available("fish") or not FISH_PROMPT.exists() or not shutil.which("git"):
         return
@@ -505,6 +607,8 @@ TESTS = [
     test_bash_prompt_eventually_renders_git_info,
     test_fish_prompt_git_refresh_is_async,
     test_bash_prompt_git_refresh_is_async,
+    test_fish_prompt_uses_cached_git_segment_without_sync_rebuild,
+    test_bash_prompt_uses_cached_git_segment_without_sync_rebuild,
 ]
 
 

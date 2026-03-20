@@ -482,6 +482,7 @@ modules:
 
         __dot_prompt_git_refresh_async() {
             local repo="$1"
+            local max_branch="${2:-24}"
             local key cache lock repo_q cache_q lock_q worker
             __dot_prompt_git_cache_key "$repo"
             key="$REPLY"
@@ -505,7 +506,7 @@ modules:
                     "__dc_brred='\[\e[91m\]'" \
                     "__dc_brblu='\[\e[94m\]'" \
                     "tmp=${cache_q}.tmp" \
-                    "__dot_prompt_git_build ${repo_q} > \"\$tmp\" && mv \"\$tmp\" ${cache_q}" \
+                    "__dot_prompt_git_build ${repo_q} ${max_branch} > \"\$tmp\" && mv \"\$tmp\" ${cache_q}" \
                     "rmdir ${lock_q}"
             )"
             bash --noprofile --norc -c "$worker" >/dev/null 2>&1 &
@@ -539,12 +540,12 @@ modules:
                     __dot_prompt_repo_root="$repo"
                 fi
                 if [[ -n "$repo" ]]; then
-                    __dot_prompt_git_refresh_async "$repo"
+                    __dot_prompt_git_refresh_async "$repo" "$git_branch_budget"
                     __dot_prompt_git_cache_key "$repo"
                     key="$REPLY"
                     cache="$__dot_prompt_cache_dir/$key.git"
                     if [[ -f "$cache" ]]; then
-                        git_segment="$(__dot_prompt_git_build "$repo" "$git_branch_budget")"
+                        git_segment="$(<"$cache")"
                         [[ -n "$git_segment" ]] && git_segment=" ${git_segment}"
                     fi
                 fi

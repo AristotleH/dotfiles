@@ -209,6 +209,8 @@ end
 
 function _prompt_git_refresh_async
     set -l repo $argv[1]
+    set -l max_branch $argv[2]
+    test -n "$max_branch"; or set max_branch 24
     set -l key (_prompt_git_cache_key $repo)
     set -l cache "$__dot_prompt_cache_dir/$key.git"
     set -l lock "$cache.lock"
@@ -231,7 +233,7 @@ function _prompt_git_refresh_async
         "set _c_brred  \\e'[91m'" \
         "set _c_brblu  \\e'[94m'" \
         (functions _prompt_git_build) \
-        "_prompt_git_build $repo_q > $cache_q.tmp" \
+        "_prompt_git_build $repo_q $max_branch > $cache_q.tmp" \
         "and mv $cache_q.tmp $cache_q" \
         "cat $repo_q/.git/HEAD > $head_q 2>/dev/null" \
         "rmdir $lock_q" \
@@ -264,11 +266,9 @@ function _prompt_git
         end
     end
 
-    _prompt_git_refresh_async $repo
+    _prompt_git_refresh_async $repo $max_branch
 
-    if test -f "$cache"
-        _prompt_git_build $repo $max_branch
-    end
+    test -f "$cache"; and cat "$cache"
 end
 
 function _prompt_arrow
@@ -309,10 +309,7 @@ function fish_prompt
     if test $git_branch_budget -ge 4
         set -l repo (_prompt_git_root)
         if test -n "$repo"
-            set git_info (_prompt_git_build $repo $git_branch_budget 2>/dev/null)
-            if test -z "$git_info"
-                set git_info (_prompt_git $git_branch_budget)
-            end
+            set git_info (_prompt_git $git_branch_budget 2>/dev/null)
         end
     end
     if test -n "$git_info"
