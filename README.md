@@ -5,7 +5,7 @@ Personal dotfiles managed with [chezmoi](https://www.chezmoi.io/).
 ## Features
 
 - **Cross-platform**: macOS, Linux (Debian/Ubuntu, Arch, Fedora), and Windows (MSYS2)
-- **Four-shell support**: Fish, Zsh, Bash, and PowerShell from a single YAML manifest
+- **Four-shell support**: Fish, Zsh, Bash, and PowerShell from a base YAML manifest plus optional external manifests
 - **Optional package management**: Install from an external `packages.yaml` at apply time
 - **Modern CLI tools**: bat, eza, fd, fzf, ripgrep, zoxide, git-delta, and more
 - **Tmux integration**: Mouse support, OSC passthrough for modern terminals
@@ -73,7 +73,7 @@ See the test fixtures in
 .
 ├── bootstrap.sh                        # No-chezmoi installer
 ├── .shellgen/                          # Shell config generator
-│   ├── shell.yaml                      # Central shell manifest
+│   ├── shell.yaml                      # Base shell manifest
 │   └── generate_shell.py              # YAML → Fish/Zsh/Bash/PowerShell
 ├── .pkgmgmt/                           # Package management
 │   ├── generate_packages.py            # YAML → platform package lists
@@ -105,6 +105,10 @@ On first run, chezmoi will prompt for:
 
 These are stored in chezmoi's config and used in templates.
 
+Shell manifests are merged left-to-right. `shell.yaml` is always loaded first, then any paths from
+`shell.extraManifests`, then every `.yaml` and `.yml` file in `~/.config/shell.d/` in alphabetical order.
+If the same function or module name appears more than once, the later manifest wins.
+
 #### External Git Config
 
 Add machine-specific or private git settings in `~/.gitconfig.local`.
@@ -135,6 +139,8 @@ The Fish shell configuration includes:
 #### External Fish Config
 
 Add machine-specific settings in `~/.config/fish/config.local.fish` (not managed by chezmoi).
+
+For generator-driven shell changes, put extra YAML manifests in `~/.config/shell.d/`.
 
 ### Zsh Shell
 

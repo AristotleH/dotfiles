@@ -1,6 +1,6 @@
 # Shell Configuration Transpiler
 
-A YAML-to-shell transpiler that generates idiomatic configuration files for **Fish**, **Zsh**, **Bash**, and **PowerShell** from a single declarative manifest.
+A YAML-to-shell transpiler that generates idiomatic configuration files for **Fish**, **Zsh**, **Bash**, and **PowerShell** from a base declarative manifest plus optional overlays.
 
 ## Architecture
 
@@ -8,7 +8,7 @@ A YAML-to-shell transpiler that generates idiomatic configuration files for **Fi
                           ┌──► Fish    (conf.d/*.fish, functions/*.fish)
 shell.yaml  ──┐           │
                ├─ generate_shell.py ──┼──► Zsh     (.zshrc.d/*.zsh, .zfunctions/*)
-shell.d/*.yaml ┘           │
+shell.d/*.{yaml,yml} ┘           │
                           ├──► Bash    (bashrc.d/*.bash, functions/*.bash)
                           │
                           └──► PowerShell (conf.d/*.ps1, functions/*.ps1)
@@ -44,13 +44,13 @@ python3 generate_shell.py
 python3 generate_shell.py shell.yaml ~/.config/shell.d/work.yaml
 
 # Pipe paths from stdin (one per line)
-find ~/.config/shell.d -name 'shell.yaml' | python3 generate_shell.py
+find ~/.config/shell.d -type f '(' -name '*.yaml' -o -name '*.yml' ')' | sort | python3 generate_shell.py
 
 # Mixed: positional + stdin + --target
 echo ~/.config/shell.d/work.yaml | python3 generate_shell.py shell.yaml --target ~/.config
 ```
 
-**`chezmoi apply`** runs `run_after_generate_shell.sh` which calls the generator with `--target ~/.config`, passing the main manifest and extras directory as positional args.
+**`chezmoi apply`** runs `run_after_generate_shell.sh` which calls the generator with `--target ~/.config`, passing the main manifest and any extra manifest directories as positional args. Directories are expanded to all compatible YAML files in alphabetical order.
 
 ---
 
@@ -472,7 +472,7 @@ modules:
       - "$HOME/work/scripts"
 ```
 
-Files are merged in the order given. If two sources define a function or module with the same name, the later one wins.
+Files are merged in the order given. Directory sources are expanded to compatible `.yaml` and `.yml` files in alphabetical order. If two sources define a function or module with the same name, the later one wins.
 
 ---
 
