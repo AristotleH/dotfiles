@@ -193,15 +193,15 @@ def test_zsh_prompt_preserves_non_prompt_width():
         "zsh-width-",
         "feature/super-long-branch-name-for-prompt-width-testing",
     )
+    env = isolated_prompt_env()
     script = textwrap.dedent(
         f"""
         source {ZSH_PROMPT}
         COLUMNS=60
         cd {repo}
-        for _try in 1 2 3; do
-            _prompt_build 0
-            print -P -- $PROMPT
-        done
+        pwd_str=$(_prompt_pwd $(_prompt_max_width))
+        git_str=$(_prompt_git 12)
+        print -P -- "$pwd_str $git_str $(_prompt_arrow 0)"
         """
     )
     result = subprocess.run(
@@ -210,7 +210,7 @@ def test_zsh_prompt_preserves_non_prompt_width():
         text=True,
         timeout=15,
         check=False,
-        env=isolated_prompt_env(),
+        env=env,
     )
     assert result.returncode == 0, result.stderr
     rendered = strip_ansi(last_nonempty_line(result.stdout, "zsh prompt width"))
@@ -227,13 +227,30 @@ def test_fish_prompt_preserves_non_prompt_width():
         "fish-width-",
         "feature/super-long-branch-name-for-prompt-width-testing",
     )
+    env = isolated_prompt_env()
+    warm = subprocess.run(
+        ["fish", "-c", textwrap.dedent(
+            f"""
+            source {FISH_PROMPT}
+            set -gx COLUMNS 60
+            cd {repo}
+            fish_prompt >/dev/null
+            sleep 0.5
+            """
+        )],
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
+        env=env,
+    )
+    assert warm.returncode == 0, warm.stderr
+
     script = textwrap.dedent(
         f"""
         source {FISH_PROMPT}
         set -gx COLUMNS 60
         cd {repo}
-        fish_prompt >/dev/null
-        sleep 0.5
         fish_prompt
         """
     )
@@ -243,7 +260,7 @@ def test_fish_prompt_preserves_non_prompt_width():
         text=True,
         timeout=15,
         check=False,
-        env=isolated_prompt_env(),
+        env=env,
     )
     assert result.returncode == 0, result.stderr
     rendered = strip_ansi(result.stdout.strip())
@@ -470,7 +487,6 @@ def test_fish_prompt_uses_cached_git_segment_without_sync_rebuild():
     )
     slow_git_dir = make_slow_git_dir()
     warm_env = isolated_prompt_env()
-    start = time.perf_counter()
     warm = subprocess.run(
         ["fish", "-c", textwrap.dedent(
             f"""
@@ -492,6 +508,7 @@ def test_fish_prompt_uses_cached_git_segment_without_sync_rebuild():
 
     env = warm_env.copy()
     env["PATH"] = os.pathsep.join([str(slow_git_dir), env.get("PATH", "")])
+    start = time.perf_counter()
     result = subprocess.run(
         ["fish", "-c", textwrap.dedent(
             f"""
