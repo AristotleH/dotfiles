@@ -218,6 +218,14 @@ def test_complex_pwsh():
     assert result.startswith(HEADER)
 
 
+def test_prompt_module_quotes_pwsh_upstream_ref():
+    """PowerShell prompt module must quote @{upstream} so it parses correctly."""
+    manifest = load_manifest(Path(__file__).parent.parent / "shell.yaml")
+    prompt = next(mod for mod in manifest["modules"] if mod["name"] == "prompt")
+    result = generate_module(prompt, "pwsh")
+    assert "'@{upstream}...HEAD'" in result
+
+
 def test_complex_shared_fallback():
     """Complex function falls back to 'shared' body when shell key missing."""
     func = {

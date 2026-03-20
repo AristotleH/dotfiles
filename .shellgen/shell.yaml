@@ -705,7 +705,7 @@ modules:
             $stash = @(git stash list 2>$null).Count
             $behind = 0
             $ahead = 0
-            $upstream = git rev-list --count --left-right @{upstream}...HEAD 2>$null
+            $upstream = git rev-list --count --left-right '@{upstream}...HEAD' 2>$null
             if ($upstream) {
                 $parts = $upstream -split '\s+'
                 if ($parts.Length -ge 2) {
