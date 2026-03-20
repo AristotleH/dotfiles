@@ -17,17 +17,17 @@ Usage:
     # No args — default to script_dir/shell.yaml (backward compat)
     python3 generate_shell.py
 
-    # Positional args: files or directories (dir → dir/shell.yaml)
+    # Positional args: files or directories (dir → alphabetical YAML files inside)
     python3 generate_shell.py shell.yaml ~/.config/shell.d/work.yaml
 
     # Pipe paths from stdin (one per line)
-    find ~/.config/shell.d -name 'shell.yaml' | python3 generate_shell.py
+    find ~/.config/shell.d -type f '(' -name '*.yaml' -o -name '*.yml' ')' | sort | python3 generate_shell.py
 
     # Mixed: positional + stdin
     echo ~/.config/shell.d/work.yaml | python3 generate_shell.py shell.yaml
 
     # --target still works
-    python3 generate_shell.py shell.yaml extras.yaml --target ~/.config
+    python3 generate_shell.py shell.yaml ~/.config/shell.d --target ~/.config
 """
 
 import argparse
@@ -946,12 +946,22 @@ def merge_manifests(base: Dict, extra: Dict) -> Dict:
     return merged
 
 
+def _iter_manifest_files(directory: Path) -> List[Path]:
+    """Return compatible YAML manifests in directory, sorted alphabetically."""
+    manifest_files = [
+        candidate
+        for candidate in directory.iterdir()
+        if candidate.is_file() and candidate.suffix.lower() in {".yaml", ".yml"}
+    ]
+    return sorted(manifest_files)
+
+
 def resolve_sources(paths: List[str], quiet: bool = False) -> List[Path]:
-    """Resolve a list of path strings to YAML file paths.
+    """Resolve a list of path strings to YAML manifest file paths.
 
     Each path is resolved as:
     - File -> load directly
-    - Directory -> load shell.yaml inside it (error if not found)
+    - Directory -> load all YAML files inside it, sorted alphabetically
     - Nonexistent -> skip with warning
     """
     resolved = []
@@ -960,15 +970,13 @@ def resolve_sources(paths: List[str], quiet: bool = False) -> List[Path]:
         if path.is_file():
             resolved.append(path)
         elif path.is_dir():
-            yaml_path = path / "shell.yaml"
-            if yaml_path.is_file():
-                resolved.append(yaml_path)
-            else:
-                if not quiet:
-                    warnings.warn(f"No shell.yaml found in directory: {path}")
-        else:
-            if not quiet:
-                warnings.warn(f"Source path does not exist, skipping: {path}")
+            yaml_paths = _iter_manifest_files(path)
+            if yaml_paths:
+                resolved.extend(yaml_paths)
+            elif not quiet:
+                warnings.warn(f"No compatible YAML manifests found in directory: {path}")
+        elif not quiet:
+            warnings.warn(f"Source path does not exist, skipping: {path}")
     return resolved
 
 
@@ -1114,7 +1122,7 @@ def main():
                     "PowerShell config files")
     parser.add_argument(
         "sources", nargs="*",
-        help="YAML files or directories (dir -> dir/shell.yaml). "
+        help="YAML files or directories (dir -> all YAML files inside, alphabetically). "
              "If omitted, defaults to script_dir/shell.yaml.")
     parser.add_argument(
         "--target", type=Path, default=None,

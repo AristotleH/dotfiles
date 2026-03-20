@@ -5,7 +5,7 @@ Personal dotfiles managed with [chezmoi](https://www.chezmoi.io/).
 ## Features
 
 - **Cross-platform**: macOS, Linux (Debian/Ubuntu, Arch, Fedora), and Windows (MSYS2)
-- **Four-shell support**: Fish, Zsh, Bash, and PowerShell from a single YAML manifest
+- **Four-shell support**: Fish, Zsh, Bash, and PowerShell from one or more YAML manifests
 - **Optional package management**: Install from an external `packages.yaml` at apply time
 - **Modern CLI tools**: bat, eza, fd, fzf, ripgrep, zoxide, git-delta, and more
 - **Tmux integration**: Mouse support, OSC passthrough for modern terminals
@@ -67,13 +67,32 @@ If unset or the file doesn't exist, package installation is silently skipped.
 See the test fixtures in
 [`.pkgmgmt/tests/test_generator.py`](.pkgmgmt/tests/test_generator.py) for the `packages.yaml` schema.
 
+## Shell Manifest Overrides
+
+Shell config generation always starts with `.shellgen/shell.yaml`. You can then layer
+extra shell manifests from files or directories via chezmoi config. When you pass a
+directory, every compatible `.yaml` and `.yml` file in that directory is applied in
+alphabetical order, and directories are merged in the order you provide them.
+
+For example, if you want machine-specific overrides under `~/.config/shell.d`:
+
+```toml
+# ~/.config/chezmoi/chezmoi.toml
+[data.shell]
+  extraManifests = "/path/to/work.yaml,/path/to/personal-shells"
+```
+
+With the example above, shellgen applies `.shellgen/shell.yaml`, then `work.yaml`, then
+each compatible YAML file inside `personal-shells` in alphabetical order. Last matching
+function or module names still win, so later manifests can override earlier ones.
+
 ## Structure
 
 ```
 .
 ├── bootstrap.sh                        # No-chezmoi installer
 ├── .shellgen/                          # Shell config generator
-│   ├── shell.yaml                      # Central shell manifest
+│   ├── shell.yaml                      # Base shell manifest
 │   └── generate_shell.py              # YAML → Fish/Zsh/Bash/PowerShell
 ├── .pkgmgmt/                           # Package management
 │   ├── generate_packages.py            # YAML → platform package lists
@@ -101,7 +120,7 @@ On first run, chezmoi will prompt for:
 - Git email and name
 - Extra gitconfig paths (comma-separated, optional)
 - Path to an external `packages.yaml` (optional)
-- Extra shell manifest paths (optional)
+- Extra shell manifest files or directories (optional)
 
 These are stored in chezmoi's config and used in templates.
 

@@ -6,7 +6,7 @@ This file provides guidance to coding agents when working with this repository.
 
 Chezmoi-managed dotfiles for macOS, Linux (Debian/Ubuntu, Arch, Fedora),
 and Windows (MSYS2). Four shells (Fish, Zsh, Bash, PowerShell) are generated
-from a single YAML manifest. Optional package management installs
+from one or more YAML manifests merged in order. Optional package management installs
 platform-specific packages from an external `packages.yaml` during
 `chezmoi apply`. A `bootstrap.sh` script provides a no-chezmoi fallback.
 
@@ -62,11 +62,13 @@ chezmoi update    # Pull and apply latest
 
 ### Shell Config Generator (.shellgen/)
 
-`shell.yaml` → `generate_shell.py` → Fish, Zsh, Bash, and PowerShell configs.
+`shell.yaml` + optional extra YAML manifests → `generate_shell.py` → Fish, Zsh, Bash, and PowerShell configs.
 
 The generator is idempotent and produces matching configurations for all
-four shells from a single YAML source. It writes to the chezmoi source
-dir by default, or directly to `~/.config` with `--target`.
+four shells from one or more YAML sources merged left-to-right. Directory
+inputs are expanded to compatible `.yaml` and `.yml` files in alphabetical
+order. It writes to the chezmoi source dir by default, or directly to
+`~/.config` with `--target`.
 
 ### Package Management (.pkgmgmt/)
 
