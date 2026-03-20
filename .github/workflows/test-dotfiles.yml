@@ -172,7 +172,9 @@ jobs:
           CFGEOF
               chezmoi init --source=/tmp/dotfiles --apply --force
               echo "Running shell functionality tests..."
-              python3 /dotfiles-src/.tests/test_shell_functionality.py'
+              python3 /dotfiles-src/.tests/test_shell_functionality.py
+              echo "Running prompt behavior tests..."
+              python3 /dotfiles-src/.tests/test_prompt_behavior.py'
 
   pwsh-test:
     name: PowerShell + Bash Tests (Docker)
