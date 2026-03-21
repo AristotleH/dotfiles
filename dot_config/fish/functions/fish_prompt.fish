@@ -232,6 +232,7 @@ function _prompt_git_refresh_async
         "set _c_brylw  \\e'[93m'" \
         "set _c_brred  \\e'[91m'" \
         "set _c_brblu  \\e'[94m'" \
+        (functions _prompt_truncate_tail) \
         (functions _prompt_git_build) \
         "_prompt_git_build $repo_q $max_branch > $cache_q.tmp" \
         "and mv $cache_q.tmp $cache_q" \
@@ -302,7 +303,7 @@ function fish_prompt
 
     set -l max_width (_prompt_max_width)
     set -l pwd_info (_prompt_pwd $max_width)
-    set -l pwd_plain (string replace -ra '\e\\[[0-9;]*m' '' -- $pwd_info)
+    set -l pwd_plain (string replace -ra '\e\[[0-9;]*m' '' -- $pwd_info)
     set -l git_branch_budget \
         (math "$max_width - "(string length -- $pwd_plain)" - 2 - 2")
     set -l git_info
