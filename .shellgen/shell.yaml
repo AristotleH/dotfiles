@@ -253,6 +253,8 @@ modules:
         __dc_brblu='\[\e[94m\]'
 
         __dot_prompt_cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/dot_prompt"
+        __dot_prompt_repo_pwd=''
+        __dot_prompt_repo_root=''
 
         __dot_prompt_parts_length() {
             local total=0 part
@@ -260,41 +262,53 @@ modules:
                 (( total += ${#part} ))
             done
             (( $# > 1 )) && (( total += $# - 1 ))
-            printf '%s' "$total"
+            REPLY="$total"
         }
 
         __dot_prompt_truncate_tail() {
             local text="$1"
             local keep="$2"
             if (( keep <= 1 )); then
-                printf '…'
+                REPLY='…'
                 return
             fi
             local tail_len=$(( keep - 1 ))
             if (( tail_len >= ${#text} )); then
-                printf '%s' "$text"
+                REPLY="$text"
                 return
             fi
-            printf '…%s' "${text: -tail_len}"
+            REPLY="…${text: -tail_len}"
+        }
+
+        __dot_prompt_max_width() {
+            local cols="${COLUMNS:-80}"
+            local width=$(( cols - 30 ))
+            (( width < 0 )) && width=0
+            REPLY="$width"
         }
 
         __dot_prompt_segment_limit() {
             local cols="$1"
             if (( cols < 40 )); then
-                printf '0'
+                REPLY=0
             elif (( cols < 60 )); then
-                printf '1'
+                REPLY=1
             elif (( cols < 80 )); then
-                printf '2'
+                REPLY=2
             else
-                printf '%s' "$cols"
+                REPLY="$cols"
             fi
         }
 
-        __dot_prompt_pwd() {
+        __dot_prompt_pwd_plain() {
+            local max_width="$1"
+            if [[ -z "$max_width" ]]; then
+                __dot_prompt_max_width
+                max_width="$REPLY"
+            fi
             local cwd="${PWD/#$HOME/~}"
             local cols="${COLUMNS:-80}"
-            local budget=$(( cols - 12 ))
+            local budget=$(( max_width - 2 ))
             (( budget < 10 )) && budget=10
 
             local parts display_parts
@@ -302,7 +316,8 @@ modules:
             display_parts=("${parts[@]}")
             local n=${#display_parts[@]}
             local length i part other keep limit start
-            limit="$(__dot_prompt_segment_limit "$cols")"
+            __dot_prompt_segment_limit "$cols"
+            limit="$REPLY"
 
             if (( limit == 0 && n > 2 )); then
                 if [[ "${display_parts[0]}" == '' || "${display_parts[0]}" == '~' ]]; then
@@ -320,7 +335,8 @@ modules:
             fi
 
             n=${#display_parts[@]}
-            length="$(__dot_prompt_parts_length "${display_parts[@]}")"
+            __dot_prompt_parts_length "${display_parts[@]}"
+            length="$REPLY"
 
             if (( length > budget && n > 2 )); then
                 local compact_parts=() tail_parts candidate_parts
@@ -333,7 +349,8 @@ modules:
                 tail_parts=("${display_parts[$((n-1))]}")
                 for (( i=n-2; i>=start; i-- )); do
                     candidate_parts=("${compact_parts[@]}" '…' "${display_parts[$i]}" "${tail_parts[@]}")
-                    if (( $(__dot_prompt_parts_length "${candidate_parts[@]}") > budget )); then
+                    __dot_prompt_parts_length "${candidate_parts[@]}"
+                    if (( REPLY > budget )); then
                         break
                     fi
                     tail_parts=("${display_parts[$i]}" "${tail_parts[@]}")
@@ -341,22 +358,39 @@ modules:
 
                 display_parts=("${compact_parts[@]}" '…' "${tail_parts[@]}")
                 n=${#display_parts[@]}
-                length="$(__dot_prompt_parts_length "${display_parts[@]}")"
+                __dot_prompt_parts_length "${display_parts[@]}"
+                length="$REPLY"
             fi
 
             if (( length > budget && n > 0 )); then
                 other=0
                 if (( n > 1 )); then
-                    other="$(__dot_prompt_parts_length "${display_parts[@]:0:n-1}")"
+                    __dot_prompt_parts_length "${display_parts[@]:0:n-1}"
+                    other="$REPLY"
                 fi
                 keep=$(( budget - other - 1 ))
                 (( keep < 1 )) && keep=1
-                display_parts[$((n-1))]="$(__dot_prompt_truncate_tail "${display_parts[$((n-1))]}" "$keep")"
+                __dot_prompt_truncate_tail "${display_parts[$((n-1))]}" "$keep"
+                display_parts[$((n-1))]="$REPLY"
             fi
 
+            local plain_out='' plain_part plain_sep=''
+            for plain_part in "${display_parts[@]}"; do
+                plain_out+="${plain_sep}${plain_part}"
+                plain_sep='/'
+            done
+            REPLY="$plain_out"
+        }
+
+        __dot_prompt_pwd_colorize() {
+            local plain_pwd="$1"
+            local part
+            local parts
+            IFS='/' read -ra parts <<< "$plain_pwd"
+            local n=${#parts[@]}
             local out='' sep='' seg
             for (( i=0; i<n; i++ )); do
-                part="${display_parts[$i]}"
+                part="${parts[$i]}"
                 if (( i == 0 || i == n - 1 )); then
                     seg="${__dc_brcyan}${part}${__dc_reset}"
                 elif [[ -z "$part" ]]; then
@@ -367,14 +401,20 @@ modules:
                 out+="${sep}${seg}"
                 sep="${__dc_cyan}/${__dc_reset}"
             done
-            printf '%s' "$out"
+            REPLY="$out"
+        }
+
+        __dot_prompt_pwd() {
+            __dot_prompt_pwd_plain "$1"
+            __dot_prompt_pwd_colorize "$REPLY"
+            printf '%s' "$REPLY"
         }
 
         __dot_prompt_git_root() {
             local dir="$PWD"
             while :; do
                 if [[ -e "$dir/.git" ]]; then
-                    printf '%s' "$dir"
+                    REPLY="$dir"
                     return 0
                 fi
                 [[ "$dir" == / ]] && return 1
@@ -386,11 +426,12 @@ modules:
         __dot_prompt_git_cache_key() {
             local key="$1"
             key="${key//[^[:alnum:]_.-]/_}"
-            printf '%s.bash' "$key"
+            REPLY="${key}.bash"
         }
 
         __dot_prompt_git_build() {
             local repo="$1"
+            local max_branch="${2:-24}"
             local branch
             branch="$(git -C "$repo" branch --show-current 2>/dev/null)" || return
             if [[ -z "$branch" ]]; then
@@ -401,7 +442,11 @@ modules:
                     branch="@$(git -C "$repo" rev-parse --short HEAD 2>/dev/null)"
                 fi
             fi
-            (( ${#branch} > 24 )) && branch="${branch:0:21}..."
+            (( max_branch < 4 )) && return
+            if (( ${#branch} > max_branch )); then
+                __dot_prompt_truncate_tail "$branch" "$max_branch"
+                branch="$REPLY"
+            fi
 
             local stat staged=0 dirty=0 untracked=0 conflicted=0 stash=0
             stat="$(git -C "$repo" --no-optional-locks status --porcelain 2>/dev/null)"
@@ -437,8 +482,10 @@ modules:
 
         __dot_prompt_git_refresh_async() {
             local repo="$1"
-            local key cache lock
-            key="$(__dot_prompt_git_cache_key "$repo")"
+            local max_branch="${2:-24}"
+            local key cache lock repo_q cache_q lock_q worker
+            __dot_prompt_git_cache_key "$repo"
+            key="$REPLY"
             cache="$__dot_prompt_cache_dir/$key.git"
             lock="$cache.lock"
 
@@ -447,33 +494,63 @@ modules:
                 return
             fi
 
-            (
-                local tmp="$cache.tmp"
-                __dot_prompt_git_build "$repo" > "$tmp" && mv "$tmp" "$cache"
-                rmdir "$lock"
-            ) </dev/null >/dev/null 2>&1 &
-        }
-
-        __dot_prompt_git() {
-            command -v git &>/dev/null || return
-            local repo key cache git_segment=''
-            repo="$(__dot_prompt_git_root)" || return
-            key="$(__dot_prompt_git_cache_key "$repo")"
-            cache="$__dot_prompt_cache_dir/$key.git"
-
-            __dot_prompt_git_refresh_async "$repo"
-            [[ -f "$cache" ]] && IFS= read -r git_segment < "$cache"
-            printf '%s' "$git_segment"
+            printf -v repo_q '%q' "$repo"
+            printf -v cache_q '%q' "$cache"
+            printf -v lock_q '%q' "$lock"
+            worker="$(
+                declare -f __dot_prompt_truncate_tail __dot_prompt_git_build
+                printf '%s\n' \
+                    "__dc_reset='\[\e[0m\]'" \
+                    "__dc_brgrn='\[\e[92m\]'" \
+                    "__dc_brylw='\[\e[93m\]'" \
+                    "__dc_brred='\[\e[91m\]'" \
+                    "__dc_brblu='\[\e[94m\]'" \
+                    "tmp=${cache_q}.tmp" \
+                    "__dot_prompt_git_build ${repo_q} ${max_branch} > \"\$tmp\" && mv \"\$tmp\" ${cache_q}" \
+                    "rmdir ${lock_q}"
+            )"
+            bash --noprofile --norc -c "$worker" >/dev/null 2>&1 &
         }
 
         __dot_prompt_precmd() {
             local last=$?
             local arrow_color="${__dc_brgrn}"
-            local git_segment
+            local max_width pwd_segment pwd_plain git_segment pwd_len arrow_len
+            local git_branch_budget repo key cache
             (( last != 0 )) && arrow_color="${__dc_brred}"
-            git_segment="$(__dot_prompt_git)"
-            [[ -n "$git_segment" ]] && git_segment=" ${git_segment}"
-            PS1="$(__dot_prompt_pwd)${git_segment} ${arrow_color}❯${__dc_reset} "
+            __dot_prompt_max_width
+            max_width="$REPLY"
+            __dot_prompt_pwd_plain "$max_width"
+            pwd_plain="$REPLY"
+            __dot_prompt_pwd_colorize "$pwd_plain"
+            pwd_segment="$REPLY"
+            pwd_len="${#pwd_plain}"
+            arrow_len=2
+            git_branch_budget=$(( max_width - pwd_len - arrow_len - 2 ))
+            if (( git_branch_budget >= 4 )); then
+                if [[ "$PWD" == "$__dot_prompt_repo_pwd" ]]; then
+                    repo="$__dot_prompt_repo_root"
+                else
+                    if __dot_prompt_git_root; then
+                        repo="$REPLY"
+                    else
+                        repo=''
+                    fi
+                    __dot_prompt_repo_pwd="$PWD"
+                    __dot_prompt_repo_root="$repo"
+                fi
+                if [[ -n "$repo" ]]; then
+                    __dot_prompt_git_refresh_async "$repo" "$git_branch_budget"
+                    __dot_prompt_git_cache_key "$repo"
+                    key="$REPLY"
+                    cache="$__dot_prompt_cache_dir/$key.git"
+                    if [[ -f "$cache" ]]; then
+                        git_segment="$(<"$cache")"
+                        [[ -n "$git_segment" ]] && git_segment=" ${git_segment}"
+                    fi
+                fi
+            fi
+            PS1="${pwd_segment}${git_segment} ${arrow_color}❯${__dc_reset} "
         }
 
         if [[ -n "${PROMPT_COMMAND:-}" ]]; then
@@ -516,6 +593,11 @@ modules:
             return "…" + $Text.Substring($Text.Length - $tailLength)
         }
 
+        function global:__DotPromptMaxWidth {
+            $cols = $Host.UI.RawUI.WindowSize.Width
+            return [Math]::Max(0, $cols - 30)
+        }
+
         function global:__DotPromptSegmentLimit {
             param([int]$Columns)
             if ($Columns -lt 40) { return 0 }
@@ -525,13 +607,14 @@ modules:
         }
 
         function global:__DotPromptPwd {
+            param([int]$MaxWidth = (__DotPromptMaxWidth))
             $cwd = $executionContext.SessionState.Path.CurrentLocation.Path
             if ($cwd.StartsWith($HOME)) { $cwd = "~" + $cwd.Substring($HOME.Length) }
             $parts = @($cwd -split '[\\/]')
             $displayParts = @($parts)
             $n = $displayParts.Count
             $cols = $Host.UI.RawUI.WindowSize.Width
-            $budget = [Math]::Max(10, $cols - 12)
+            $budget = [Math]::Max(10, $MaxWidth - 2)
             $limit = __DotPromptSegmentLimit $cols
 
             if ($limit -eq 0 -and $n -gt 2) {
@@ -602,6 +685,7 @@ modules:
         }
 
         function global:__DotPromptGit {
+            param([int]$MaxBranch = 24)
             if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return "" }
             $branch = git branch --show-current 2>$null
             if (-not $branch) {
@@ -609,14 +693,34 @@ modules:
                 if ($tag) { $branch = "#$tag" }
                 else { $branch = "@$(git rev-parse --short HEAD 2>$null)" }
             }
-            if ($branch.Length -gt 24) { $branch = $branch.Substring(0, 21) + "..." }
+            if ($MaxBranch -lt 4) { return "" }
+            if ($branch.Length -gt $MaxBranch) {
+                $branch = __DotPromptTruncateTail $branch $MaxBranch
+            }
             $stat = git --no-optional-locks status --porcelain 2>$null
             $staged    = @($stat | Where-Object { $_ -match '^[ADMR]' }).Count
             $dirty     = @($stat | Where-Object { $_ -match '^.[ADMR]' }).Count
             $untracked = @($stat | Where-Object { $_ -match '^\?\?' }).Count
+            $conflicted = @($stat | Where-Object { $_ -match '^UU' }).Count
+            $stash = @(git stash list 2>$null).Count
+            $behind = 0
+            $ahead = 0
+            $upstream = git rev-list --count --left-right '@{upstream}...HEAD' 2>$null
+            if ($upstream) {
+                $parts = $upstream -split '\s+'
+                if ($parts.Length -ge 2) {
+                    $behind = [int]$parts[0]
+                    $ahead = [int]$parts[1]
+                }
+            }
             $color = $global:__dc_brgrn
+            if ($conflicted -gt 0) { $color = $global:__dc_brred }
             if ($staged -gt 0 -or $dirty -gt 0 -or $untracked -gt 0) { $color = $global:__dc_brylw }
             $out = " $color$branch$($global:__dc_reset)"
+            if ($behind     -gt 0) { $out += " $($global:__dc_brgrn)⇣$behind$($global:__dc_reset)" }
+            if ($ahead      -gt 0) { $out += " $($global:__dc_brgrn)⇡$ahead$($global:__dc_reset)" }
+            if ($stash      -gt 0) { $out += " $($global:__dc_brgrn)*$stash$($global:__dc_reset)" }
+            if ($conflicted -gt 0) { $out += " $($global:__dc_brred)~$conflicted$($global:__dc_reset)" }
             if ($staged     -gt 0) { $out += " $($global:__dc_brylw)+$staged$($global:__dc_reset)" }
             if ($dirty      -gt 0) { $out += " $($global:__dc_brylw)!$dirty$($global:__dc_reset)" }
             if ($untracked  -gt 0) { $out += " $($global:__dc_brblu)?$untracked$($global:__dc_reset)" }
@@ -626,7 +730,15 @@ modules:
         function global:prompt {
             $last = $LASTEXITCODE
             $arrowColor = if ($last -ne 0) { $global:__dc_brred } else { $global:__dc_brgrn }
-            $pwd = __DotPromptPwd
-            $git = __DotPromptGit
+            $maxWidth = __DotPromptMaxWidth
+            $pwd = __DotPromptPwd $maxWidth
+            $pwdLength =
+                [System.Management.Automation.Internal.StringDecorated]::new($pwd).ContentLength
+            $gitBranchBudget = $maxWidth - $pwdLength - 2 - 2
+            $git = if ($gitBranchBudget -ge 4) {
+                __DotPromptGit $gitBranchBudget
+            } else {
+                ""
+            }
             return "$pwd$git $arrowColor`u{276F}$($global:__dc_reset) "
         }
