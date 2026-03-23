@@ -156,8 +156,8 @@ end
 
 function _prompt_git_build
     set -l repo $argv[1]
-    set -l max_branch $argv[2]
-    test -n "$max_branch"; or set max_branch 24
+    set -l max_width $argv[2]
+    test -n "$max_width"; or set max_width 24
     set -l branch (command git -C "$repo" branch --show-current 2>/dev/null)
     if test -z "$branch"
         set branch (command git -C "$repo" tag --points-at HEAD 2>/dev/null | head -1)
@@ -167,10 +167,7 @@ function _prompt_git_build
             set branch "@"(command git -C "$repo" rev-parse --short HEAD 2>/dev/null)
         end
     end
-    test $max_branch -lt 4; and return
-    if test (string length -- $branch) -gt $max_branch
-        set branch (_prompt_truncate_tail $branch $max_branch)
-    end
+    test $max_width -lt 4; and return
 
     set -l stat (command git -C "$repo" --no-optional-locks status --porcelain 2>/dev/null)
     set -l stash (command git -C "$repo" stash list 2>/dev/null | count)
@@ -186,6 +183,22 @@ function _prompt_git_build
         echo $upstream | read -l b a
         set behind $b
         set ahead $a
+    end
+
+    # Calculate display length of status indicators so branch can be sized
+    set -l suffix_len 0
+    test $behind -gt 0     && set suffix_len (math "$suffix_len + 2 + "(string length -- $behind))
+    test $ahead -gt 0      && set suffix_len (math "$suffix_len + 2 + "(string length -- $ahead))
+    test $stash -gt 0      && set suffix_len (math "$suffix_len + 2 + "(string length -- $stash))
+    test $conflicted -gt 0 && set suffix_len (math "$suffix_len + 2 + "(string length -- $conflicted))
+    test $staged -gt 0     && set suffix_len (math "$suffix_len + 2 + "(string length -- $staged))
+    test $dirty -gt 0      && set suffix_len (math "$suffix_len + 2 + "(string length -- $dirty))
+    test $untracked -gt 0  && set suffix_len (math "$suffix_len + 2 + "(string length -- $untracked))
+
+    set -l branch_budget (math "$max_width - $suffix_len")
+    test $branch_budget -lt 2; and return
+    if test (string length -- $branch) -gt $branch_budget
+        set branch (_prompt_truncate_tail $branch $branch_budget)
     end
 
     if test $conflicted -gt 0
@@ -304,13 +317,13 @@ function fish_prompt
     set -l max_width (_prompt_max_width)
     set -l pwd_info (_prompt_pwd $max_width)
     set -l pwd_plain (string replace -ra '\e\[[0-9;]*m' '' -- $pwd_info)
-    set -l git_branch_budget \
+    set -l git_budget \
         (math "$max_width - "(string length -- $pwd_plain)" - 2 - 2")
     set -l git_info
-    if test $git_branch_budget -ge 4
+    if test $git_budget -ge 4
         set -l repo (_prompt_git_root)
         if test -n "$repo"
-            set git_info (_prompt_git $git_branch_budget 2>/dev/null)
+            set git_info (_prompt_git $git_budget 2>/dev/null)
         end
     end
     if test -n "$git_info"

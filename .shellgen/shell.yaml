@@ -431,7 +431,7 @@ modules:
 
         __dot_prompt_git_build() {
             local repo="$1"
-            local max_branch="${2:-24}"
+            local max_width="${2:-24}"
             local branch
             branch="$(git -C "$repo" branch --show-current 2>/dev/null)" || return
             if [[ -z "$branch" ]]; then
@@ -442,11 +442,7 @@ modules:
                     branch="@$(git -C "$repo" rev-parse --short HEAD 2>/dev/null)"
                 fi
             fi
-            (( max_branch < 4 )) && return
-            if (( ${#branch} > max_branch )); then
-                __dot_prompt_truncate_tail "$branch" "$max_branch"
-                branch="$REPLY"
-            fi
+            (( max_width < 4 )) && return
 
             local stat staged=0 dirty=0 untracked=0 conflicted=0 stash=0
             stat="$(git -C "$repo" --no-optional-locks status --porcelain 2>/dev/null)"
@@ -463,6 +459,23 @@ modules:
             if [[ -n "$upstream" ]]; then
                 behind="${upstream%%$'	'*}"
                 ahead="${upstream##*$'	'}"
+            fi
+
+            # Calculate display length of status indicators so branch can be sized
+            local suffix_len=0
+            (( behind     > 0 )) && (( suffix_len += 2 + ${#behind} ))
+            (( ahead      > 0 )) && (( suffix_len += 2 + ${#ahead} ))
+            (( stash      > 0 )) && (( suffix_len += 2 + ${#stash} ))
+            (( conflicted > 0 )) && (( suffix_len += 2 + ${#conflicted} ))
+            (( staged     > 0 )) && (( suffix_len += 2 + ${#staged} ))
+            (( dirty      > 0 )) && (( suffix_len += 2 + ${#dirty} ))
+            (( untracked  > 0 )) && (( suffix_len += 2 + ${#untracked} ))
+
+            local branch_budget=$(( max_width - suffix_len ))
+            (( branch_budget < 2 )) && return
+            if (( ${#branch} > branch_budget )); then
+                __dot_prompt_truncate_tail "$branch" "$branch_budget"
+                branch="$REPLY"
             fi
 
             local color="${__dc_brgrn}"
@@ -516,7 +529,7 @@ modules:
             local last=$?
             local arrow_color="${__dc_brgrn}"
             local max_width pwd_segment pwd_plain git_segment pwd_len arrow_len
-            local git_branch_budget repo key cache
+            local git_budget repo key cache
             (( last != 0 )) && arrow_color="${__dc_brred}"
             __dot_prompt_max_width
             max_width="$REPLY"
@@ -526,8 +539,8 @@ modules:
             pwd_segment="$REPLY"
             pwd_len="${#pwd_plain}"
             arrow_len=2
-            git_branch_budget=$(( max_width - pwd_len - arrow_len - 2 ))
-            if (( git_branch_budget >= 4 )); then
+            git_budget=$(( max_width - pwd_len - arrow_len - 2 ))
+            if (( git_budget >= 4 )); then
                 if [[ "$PWD" == "$__dot_prompt_repo_pwd" ]]; then
                     repo="$__dot_prompt_repo_root"
                 else
@@ -540,7 +553,7 @@ modules:
                     __dot_prompt_repo_root="$repo"
                 fi
                 if [[ -n "$repo" ]]; then
-                    __dot_prompt_git_refresh_async "$repo" "$git_branch_budget"
+                    __dot_prompt_git_refresh_async "$repo" "$git_budget"
                     __dot_prompt_git_cache_key "$repo"
                     key="$REPLY"
                     cache="$__dot_prompt_cache_dir/$key.git"
@@ -685,7 +698,7 @@ modules:
         }
 
         function global:__DotPromptGit {
-            param([int]$MaxBranch = 24)
+            param([int]$MaxWidth = 24)
             if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return "" }
             $branch = git branch --show-current 2>$null
             if (-not $branch) {
@@ -693,10 +706,7 @@ modules:
                 if ($tag) { $branch = "#$tag" }
                 else { $branch = "@$(git rev-parse --short HEAD 2>$null)" }
             }
-            if ($MaxBranch -lt 4) { return "" }
-            if ($branch.Length -gt $MaxBranch) {
-                $branch = __DotPromptTruncateTail $branch $MaxBranch
-            }
+            if ($MaxWidth -lt 4) { return "" }
             $stat = git --no-optional-locks status --porcelain 2>$null
             $staged    = @($stat | Where-Object { $_ -match '^[ADMR]' }).Count
             $dirty     = @($stat | Where-Object { $_ -match '^.[ADMR]' }).Count
@@ -712,6 +722,20 @@ modules:
                     $behind = [int]$parts[0]
                     $ahead = [int]$parts[1]
                 }
+            }
+            # Calculate display length of status indicators so branch can be sized
+            $suffixLen = 0
+            if ($behind     -gt 0) { $suffixLen += 2 + "$behind".Length }
+            if ($ahead      -gt 0) { $suffixLen += 2 + "$ahead".Length }
+            if ($stash      -gt 0) { $suffixLen += 2 + "$stash".Length }
+            if ($conflicted -gt 0) { $suffixLen += 2 + "$conflicted".Length }
+            if ($staged     -gt 0) { $suffixLen += 2 + "$staged".Length }
+            if ($dirty      -gt 0) { $suffixLen += 2 + "$dirty".Length }
+            if ($untracked  -gt 0) { $suffixLen += 2 + "$untracked".Length }
+            $branchBudget = $MaxWidth - $suffixLen
+            if ($branchBudget -lt 2) { return "" }
+            if ($branch.Length -gt $branchBudget) {
+                $branch = __DotPromptTruncateTail $branch $branchBudget
             }
             $color = $global:__dc_brgrn
             if ($conflicted -gt 0) { $color = $global:__dc_brred }
@@ -734,9 +758,9 @@ modules:
             $pwd = __DotPromptPwd $maxWidth
             $pwdLength =
                 [System.Management.Automation.Internal.StringDecorated]::new($pwd).ContentLength
-            $gitBranchBudget = $maxWidth - $pwdLength - 2 - 2
-            $git = if ($gitBranchBudget -ge 4) {
-                __DotPromptGit $gitBranchBudget
+            $gitBudget = $maxWidth - $pwdLength - 2 - 2
+            $git = if ($gitBudget -ge 4) {
+                __DotPromptGit $gitBudget
             } else {
                 ""
             }
