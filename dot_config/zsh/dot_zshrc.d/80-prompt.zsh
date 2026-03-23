@@ -221,13 +221,21 @@ _prompt_cmd_start=$SECONDS
 _prompt_build() {
   local last=$1 max_width pwd_str git_str arrow_str pwd_len arrow_len git_budget
   max_width=$(_prompt_max_width)
-  pwd_str=$(_prompt_pwd "$max_width")
   arrow_str=$(_prompt_arrow "$last")
-
-  pwd_len=$(_prompt_rendered_length "$pwd_str")
   arrow_len=$(_prompt_rendered_length "$arrow_str")
+
+  # Check for git repo first so pwd budget can reserve space for git info
+  local in_git=0 git_reserve=0
+  git rev-parse --is-inside-work-tree &>/dev/null && in_git=1
+  (( in_git )) && git_reserve=20
+
+  local pwd_budget=$(( max_width - git_reserve - arrow_len - 2 ))
+  (( pwd_budget < 10 )) && pwd_budget=10
+  pwd_str=$(_prompt_pwd "$pwd_budget")
+  pwd_len=$(_prompt_rendered_length "$pwd_str")
+
   git_budget=$(( max_width - pwd_len - arrow_len - 2 ))
-  if (( git_budget >= 4 )); then
+  if (( git_budget >= 4 && in_git )); then
     git_str=$(_prompt_git "$git_budget")
   else
     git_str=''

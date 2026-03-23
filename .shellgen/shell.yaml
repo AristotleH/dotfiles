@@ -529,38 +529,44 @@ modules:
             local last=$?
             local arrow_color="${__dc_brgrn}"
             local max_width pwd_segment pwd_plain git_segment pwd_len arrow_len
-            local git_budget repo key cache
+            local git_budget repo key cache git_reserve pwd_budget
             (( last != 0 )) && arrow_color="${__dc_brred}"
             __dot_prompt_max_width
             max_width="$REPLY"
-            __dot_prompt_pwd_plain "$max_width"
+            arrow_len=2
+
+            # Check for git repo first so pwd budget can reserve space for git info
+            git_reserve=0
+            if [[ "$PWD" == "$__dot_prompt_repo_pwd" ]]; then
+                repo="$__dot_prompt_repo_root"
+            else
+                if __dot_prompt_git_root; then
+                    repo="$REPLY"
+                else
+                    repo=''
+                fi
+                __dot_prompt_repo_pwd="$PWD"
+                __dot_prompt_repo_root="$repo"
+            fi
+            [[ -n "$repo" ]] && git_reserve=20
+
+            pwd_budget=$(( max_width - git_reserve - arrow_len - 2 ))
+            (( pwd_budget < 10 )) && pwd_budget=10
+            __dot_prompt_pwd_plain "$pwd_budget"
             pwd_plain="$REPLY"
             __dot_prompt_pwd_colorize "$pwd_plain"
             pwd_segment="$REPLY"
             pwd_len="${#pwd_plain}"
-            arrow_len=2
+
             git_budget=$(( max_width - pwd_len - arrow_len - 2 ))
-            if (( git_budget >= 4 )); then
-                if [[ "$PWD" == "$__dot_prompt_repo_pwd" ]]; then
-                    repo="$__dot_prompt_repo_root"
-                else
-                    if __dot_prompt_git_root; then
-                        repo="$REPLY"
-                    else
-                        repo=''
-                    fi
-                    __dot_prompt_repo_pwd="$PWD"
-                    __dot_prompt_repo_root="$repo"
-                fi
-                if [[ -n "$repo" ]]; then
-                    __dot_prompt_git_refresh_async "$repo" "$git_budget"
-                    __dot_prompt_git_cache_key "$repo"
-                    key="$REPLY"
-                    cache="$__dot_prompt_cache_dir/$key.git"
-                    if [[ -f "$cache" ]]; then
-                        git_segment="$(<"$cache")"
-                        [[ -n "$git_segment" ]] && git_segment=" ${git_segment}"
-                    fi
+            if (( git_budget >= 4 )) && [[ -n "$repo" ]]; then
+                __dot_prompt_git_refresh_async "$repo" "$git_budget"
+                __dot_prompt_git_cache_key "$repo"
+                key="$REPLY"
+                cache="$__dot_prompt_cache_dir/$key.git"
+                if [[ -f "$cache" ]]; then
+                    git_segment="$(<"$cache")"
+                    [[ -n "$git_segment" ]] && git_segment=" ${git_segment}"
                 fi
             fi
             PS1="${pwd_segment}${git_segment} ${arrow_color}❯${__dc_reset} "
@@ -755,11 +761,22 @@ modules:
             $last = $LASTEXITCODE
             $arrowColor = if ($last -ne 0) { $global:__dc_brred } else { $global:__dc_brgrn }
             $maxWidth = __DotPromptMaxWidth
-            $pwd = __DotPromptPwd $maxWidth
+            $arrowLen = 2
+
+            # Check for git repo first so pwd budget can reserve space for git info
+            $inGit = $false
+            $gitReserve = 0
+            try {
+                git rev-parse --is-inside-work-tree 2>$null | Out-Null
+                if ($LASTEXITCODE -eq 0) { $inGit = $true; $gitReserve = 20 }
+            } catch {}
+
+            $pwdBudget = [Math]::Max(10, $maxWidth - $gitReserve - $arrowLen - 2)
+            $pwd = __DotPromptPwd $pwdBudget
             $pwdLength =
                 [System.Management.Automation.Internal.StringDecorated]::new($pwd).ContentLength
-            $gitBudget = $maxWidth - $pwdLength - 2 - 2
-            $git = if ($gitBudget -ge 4) {
+            $gitBudget = $maxWidth - $pwdLength - $arrowLen - 2
+            $git = if ($gitBudget -ge 4 -and $inGit) {
                 __DotPromptGit $gitBudget
             } else {
                 ""
