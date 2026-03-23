@@ -72,6 +72,15 @@
 	hash = rev-parse HEAD
 	branchname = rev-parse --abbrev-ref HEAD
 
+# GitHub CLI credential helper — written here so chezmoi apply doesn't clobber it.
+# `gh auth login` normally writes this to ~/.gitconfig; keeping it in the template
+# means it survives every apply. The empty helper= line clears any prior helpers
+# before setting gh's, matching what `gh auth setup-git` does.
+[credential "https://github.com"]
+	helper =
+[credential "https://github.com"]
+	helper = !gh auth git-credential
+
 # Include external/local gitconfig if it exists (for machine-specific settings)
 # This file is NOT managed by chezmoi - keep private/local settings here
 [include]

@@ -154,6 +154,24 @@ function _prompt_git_cache_key
     printf '%s.fish' (string replace -ra '[^A-Za-z0-9_.-]' '_' -- $argv[1])
 end
 
+# Return the path to the HEAD file for a repo, handling worktrees where .git is
+# a file (e.g. "gitdir: /path/to/.git/worktrees/name") rather than a directory.
+function _prompt_git_head_file
+    set -l repo $argv[1]
+    set -l dot_git "$repo/.git"
+    if test -f "$dot_git"
+        set -l gitdir (string trim -- (string replace -r '^gitdir: *' '' -- (cat "$dot_git" 2>/dev/null)))
+        # Resolve relative gitdir paths (e.g. submodules: ../.git/modules/name)
+        # against the repo root, not $PWD.
+        if not string match -q '/*' -- $gitdir
+            set gitdir (path normalize "$repo/$gitdir")
+        end
+        printf '%s/HEAD' $gitdir
+    else
+        printf '%s/.git/HEAD' $repo
+    end
+end
+
 function _prompt_git_build
     set -l repo $argv[1]
     set -l max_width $argv[2]
@@ -326,9 +344,10 @@ function _prompt_git_refresh_async
     set -l head_q (string escape -- $head_cache)
     printf '%s\n' \
         (functions _prompt_git_data) \
+        (functions _prompt_git_head_file) \
         "_prompt_git_data $repo_q > $cache_q.tmp" \
         "and mv $cache_q.tmp $cache_q" \
-        "cat $repo_q/.git/HEAD > $head_q 2>/dev/null" \
+        "cat (_prompt_git_head_file $repo_q) > $head_q 2>/dev/null" \
         "rmdir $lock_q" \
         "rm -f (status filename)" \
         > $script
@@ -345,19 +364,26 @@ function _prompt_git
     set -l key (_prompt_git_cache_key $repo)
     set -l cache "$__dot_prompt_cache_dir/$key.git"
     set -l head_cache "$__dot_prompt_cache_dir/$key.head"
-    set -l head_now (cat "$repo/.git/HEAD" 2>/dev/null)
+    set -l head_now (cat (_prompt_git_head_file $repo) 2>/dev/null)
 
-    # If HEAD changed since last cache, rebuild synchronously.
+    # If HEAD changed since the last cached build, rebuild synchronously so the
+    # new branch/status is visible immediately.  Only runs when a cache already
+    # exists (first-prompt blank is acceptable; async covers that case).
+    set -l did_sync 0
     if test -f "$cache" -a -n "$head_now"
         set -l head_prev (cat "$head_cache" 2>/dev/null)
         if test "$head_now" != "$head_prev"
             _prompt_git_data $repo > "$cache.sync"
             and mv "$cache.sync" "$cache"
             printf '%s' "$head_now" > "$head_cache"
+            set did_sync 1
         end
     end
 
-    _prompt_git_refresh_async $repo
+    # Skip async when sync just ran — the data is already fresh.
+    if test $did_sync -eq 0
+        _prompt_git_refresh_async $repo
+    end
 
     if test -f "$cache"
         _prompt_git_render (cat "$cache") $max_width
