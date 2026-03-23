@@ -142,6 +142,31 @@ def make_branch_repo(prefix: str, branch: str) -> Path:
     return repo
 
 
+def make_dirty_branch_repo(prefix: str, branch: str) -> Path:
+    """Create a repo with many git status indicators: staged, dirty, untracked, stash."""
+    repo = make_branch_repo(prefix, branch)
+    # Staged change
+    (repo / "staged.txt").write_text("staged\n")
+    subprocess.run(["git", "-C", str(repo), "add", "staged.txt"], check=True)
+    # Dirty tracked file
+    (repo / "tracked.txt").write_text("modified\n")
+    # Untracked files
+    (repo / "untracked1.txt").write_text("u1\n")
+    (repo / "untracked2.txt").write_text("u2\n")
+    # Stash
+    (repo / "stashme.txt").write_text("stash\n")
+    subprocess.run(["git", "-C", str(repo), "add", "stashme.txt"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "stash", "push", "-m", "test-stash"],
+        check=True,
+        capture_output=True,
+    )
+    # Re-stage staged.txt (stash pop may have cleared it)
+    (repo / "staged.txt").write_text("staged\n")
+    subprocess.run(["git", "-C", str(repo), "add", "staged.txt"], check=True)
+    return repo
+
+
 def test_fish_prompt_truncates_paths():
     if not shell_available("fish") or not FISH_PROMPT.exists():
         return
@@ -267,7 +292,8 @@ def test_fish_prompt_preserves_non_prompt_width():
     assert warm.returncode == 0, warm.stderr
     cache, head_cache = prompt_cache_paths(repo, env, "fish")
     cache_text = wait_for_prompt_cache(cache, head_cache)
-    assert "…" in strip_ansi(cache_text), cache_text
+    # Cache stores raw data (branch\tcounts); verify branch is present
+    assert "prompt-width-testing" in cache_text, cache_text
 
     script = textwrap.dedent(
         f"""
@@ -317,6 +343,115 @@ def test_bash_prompt_preserves_non_prompt_width():
     assert len(rendered) <= 30, rendered
     assert "prompt-width-testing" not in rendered, rendered
     assert "…" in rendered, rendered
+
+
+def test_zsh_prompt_respects_width_with_many_indicators():
+    """Prompt with long branch + dirty/staged/untracked/stash must fit within budget."""
+    if not shell_available("zsh") or not ZSH_PROMPT.exists() or not shutil.which("git"):
+        return
+
+    repo = make_dirty_branch_repo(
+        "zsh-indicators-",
+        "feature/super-long-branch-name-for-indicator-testing",
+    )
+    env = isolated_prompt_env()
+    script = textwrap.dedent(
+        f"""
+        source {ZSH_PROMPT}
+        COLUMNS=80
+        cd {repo}
+        _prompt_build 0
+        print -P -- "$PROMPT"
+        """
+    )
+    result = subprocess.run(
+        ["zsh", "-f", "-i", "-c", script],
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr
+    rendered = strip_ansi(last_nonempty_line(result.stdout, "zsh indicator width"))
+    # Total prompt must leave at least 30 cols remaining
+    assert len(rendered) <= 50, f"prompt too wide ({len(rendered)} chars): {rendered}"
+
+
+def test_fish_prompt_respects_width_with_many_indicators():
+    """Prompt with long branch + dirty/staged/untracked/stash must fit within budget."""
+    if not shell_available("fish") or not FISH_PROMPT.exists() or not shutil.which("git"):
+        return
+
+    repo = make_dirty_branch_repo(
+        "fish-indicators-",
+        "feature/super-long-branch-name-for-indicator-testing",
+    )
+    env = isolated_prompt_env()
+    # Warm cache
+    warm = subprocess.run(
+        ["fish", "-c", textwrap.dedent(
+            f"""
+            source {FISH_PROMPT}
+            set -gx COLUMNS 80
+            cd {repo}
+            fish_prompt >/dev/null
+            sleep 0.5
+            """
+        )],
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
+        env=env,
+    )
+    assert warm.returncode == 0, warm.stderr
+
+    script = textwrap.dedent(
+        f"""
+        source {FISH_PROMPT}
+        set -gx COLUMNS 80
+        cd {repo}
+        fish_prompt
+        """
+    )
+    result = subprocess.run(
+        ["fish", "-c", script],
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr
+    rendered = strip_ansi(result.stdout.strip())
+    assert len(rendered) <= 50, f"prompt too wide ({len(rendered)} chars): {rendered}"
+
+
+def test_bash_prompt_respects_width_with_many_indicators():
+    """Prompt with long branch + dirty/staged/untracked/stash must fit within budget."""
+    if not shell_available("bash") or not BASH_PROMPT.exists() or not shutil.which("git"):
+        return
+
+    repo = make_dirty_branch_repo(
+        "bash-indicators-",
+        "feature/super-long-branch-name-for-indicator-testing",
+    )
+    script = textwrap.dedent(
+        f"""
+        source "{BASH_PROMPT}"
+        COLUMNS=80
+        cd "{repo}"
+        __dot_prompt_precmd
+        sleep 0.5
+        __dot_prompt_precmd
+        printf '%s\\n' "$PS1"
+        """
+    )
+    result = run_shell(["bash", "--noprofile", "--norc", "-ic"], script)
+    assert result.returncode == 0, result.stderr
+    rendered = strip_ansi(last_nonempty_line(result.stdout, "bash indicator width"))
+    assert len(rendered) <= 50, f"prompt too wide ({len(rendered)} chars): {rendered}"
 
 
 def test_bash_prompt_clears_git_segment_after_leaving_repo():
@@ -530,7 +665,8 @@ def test_fish_prompt_uses_cached_git_segment_without_sync_rebuild():
     assert warm.returncode == 0, warm.stderr
     cache, head_cache = prompt_cache_paths(repo, warm_env, "fish")
     cache_text = wait_for_prompt_cache(cache, head_cache)
-    assert "…" in strip_ansi(cache_text), cache_text
+    # Cache stores raw data (branch\tcounts); verify branch is present
+    assert "prompt-width-testing" in cache_text, cache_text
 
     env = warm_env.copy()
     env["PATH"] = os.pathsep.join([str(slow_git_dir), env.get("PATH", "")])
@@ -679,6 +815,9 @@ TESTS = [
     test_bash_prompt_clears_git_segment_after_leaving_repo,
     test_zsh_prompt_preserves_non_prompt_width,
     test_powershell_prompt_preserves_non_prompt_width,
+    test_zsh_prompt_respects_width_with_many_indicators,
+    test_fish_prompt_respects_width_with_many_indicators,
+    test_bash_prompt_respects_width_with_many_indicators,
     test_powershell_prompt_renders_stash_count,
     test_fish_prompt_non_repo_is_fast,
     test_bash_prompt_non_repo_is_fast,

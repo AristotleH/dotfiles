@@ -145,7 +145,7 @@ _prompt_pwd() {
 # -- git status ---------------------------------------------------------------
 
 _prompt_git() {
-  local max_branch=${1:-24}
+  local max_width=${1:-24}
   local branch
   branch=$(git branch --show-current 2>/dev/null) || return
 
@@ -157,8 +157,7 @@ _prompt_git() {
       branch="@$(git rev-parse --short HEAD 2>/dev/null)"
     fi
   fi
-  (( max_branch < 4 )) && return
-  (( ${#branch} > max_branch )) && branch="$(_prompt_truncate_tail "$branch" "$max_branch")"
+  (( max_width < 4 )) && return
 
   local stat stash staged dirty untracked conflicted
   stat=$(git --no-optional-locks status --porcelain 2>/dev/null)
@@ -176,6 +175,20 @@ _prompt_git() {
   if [[ -n "$upstream" ]]; then
     behind=${upstream%$'\t'*}; ahead=${upstream#*$'\t'}
   fi
+
+  # Calculate display length of status indicators so branch can be sized
+  local suffix_len=0
+  (( behind     > 0 )) && (( suffix_len += 2 + ${#behind} ))
+  (( ahead      > 0 )) && (( suffix_len += 2 + ${#ahead} ))
+  (( stash      > 0 )) && (( suffix_len += 2 + ${#stash} ))
+  (( conflicted > 0 )) && (( suffix_len += 2 + ${#conflicted} ))
+  (( staged     > 0 )) && (( suffix_len += 2 + ${#staged} ))
+  (( dirty      > 0 )) && (( suffix_len += 2 + ${#dirty} ))
+  (( untracked  > 0 )) && (( suffix_len += 2 + ${#untracked} ))
+
+  local branch_budget=$(( max_width - suffix_len ))
+  (( branch_budget < 2 )) && return
+  (( ${#branch} > branch_budget )) && branch="$(_prompt_truncate_tail "$branch" "$branch_budget")"
 
   local color=10
   (( conflicted > 0 )) && color=9
@@ -206,16 +219,22 @@ _prompt_last_status=0
 _prompt_cmd_start=$SECONDS
 
 _prompt_build() {
-  local last=$1 max_width pwd_str git_str arrow_str pwd_len arrow_len git_branch_budget
+  local last=$1 max_width pwd_str git_str arrow_str pwd_len arrow_len git_budget
   max_width=$(_prompt_max_width)
-  pwd_str=$(_prompt_pwd "$max_width")
   arrow_str=$(_prompt_arrow "$last")
-
-  pwd_len=$(_prompt_rendered_length "$pwd_str")
   arrow_len=$(_prompt_rendered_length "$arrow_str")
-  git_branch_budget=$(( max_width - pwd_len - arrow_len - 2 ))
-  if (( git_branch_budget >= 4 )); then
-    git_str=$(_prompt_git "$git_branch_budget")
+
+  local in_git=0
+  git rev-parse --is-inside-work-tree &>/dev/null && in_git=1
+
+  local pwd_budget=$(( max_width - arrow_len - 2 ))
+  (( pwd_budget < 10 )) && pwd_budget=10
+  pwd_str=$(_prompt_pwd "$pwd_budget")
+  pwd_len=$(_prompt_rendered_length "$pwd_str")
+
+  git_budget=$(( max_width - pwd_len - arrow_len - 2 ))
+  if (( git_budget >= 4 && in_git )); then
+    git_str=$(_prompt_git "$git_budget")
   else
     git_str=''
   fi
