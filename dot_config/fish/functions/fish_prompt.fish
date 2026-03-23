@@ -395,15 +395,12 @@ function fish_prompt
 
     set -l max_width (_prompt_max_width)
 
-    # Check for git repo first so pwd budget can reserve space for git info
     set -l repo ''
-    set -l git_reserve 0
     if command -sq git
         set repo (_prompt_git_root)
-        test -n "$repo" && set git_reserve 20
     end
 
-    set -l pwd_budget (math "max(10, $max_width - $git_reserve - 4)")
+    set -l pwd_budget (math "max(10, $max_width - 4)")
     set -l pwd_info (_prompt_pwd $pwd_budget)
     set -l pwd_plain (string replace -ra '\e\[[0-9;]*m' '' -- $pwd_info)
     set -l git_budget \
