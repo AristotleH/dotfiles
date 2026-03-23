@@ -161,6 +161,11 @@ function _prompt_git_head_file
     set -l dot_git "$repo/.git"
     if test -f "$dot_git"
         set -l gitdir (string trim -- (string replace -r '^gitdir: *' '' -- (cat "$dot_git" 2>/dev/null)))
+        # Resolve relative gitdir paths (e.g. submodules: ../.git/modules/name)
+        # against the repo root, not $PWD.
+        if not string match -q '/*' -- $gitdir
+            set gitdir (path normalize "$repo/$gitdir")
+        end
         printf '%s/HEAD' $gitdir
     else
         printf '%s/.git/HEAD' $repo
@@ -361,17 +366,24 @@ function _prompt_git
     set -l head_cache "$__dot_prompt_cache_dir/$key.head"
     set -l head_now (cat (_prompt_git_head_file $repo) 2>/dev/null)
 
-    # If HEAD changed since last cache, or no cache exists yet, rebuild synchronously.
-    if test -n "$head_now"
+    # If HEAD changed since the last cached build, rebuild synchronously so the
+    # new branch/status is visible immediately.  Only runs when a cache already
+    # exists (first-prompt blank is acceptable; async covers that case).
+    set -l did_sync 0
+    if test -f "$cache" -a -n "$head_now"
         set -l head_prev (cat "$head_cache" 2>/dev/null)
-        if test "$head_now" != "$head_prev"; or not test -f "$cache"
+        if test "$head_now" != "$head_prev"
             _prompt_git_data $repo > "$cache.sync"
             and mv "$cache.sync" "$cache"
             printf '%s' "$head_now" > "$head_cache"
+            set did_sync 1
         end
     end
 
-    _prompt_git_refresh_async $repo
+    # Skip async when sync just ran — the data is already fresh.
+    if test $did_sync -eq 0
+        _prompt_git_refresh_async $repo
+    end
 
     if test -f "$cache"
         _prompt_git_render (cat "$cache") $max_width
