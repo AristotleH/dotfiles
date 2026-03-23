@@ -220,10 +220,95 @@ function _prompt_git_build
     true
 end
 
+# Collect raw git data (branch + counts) — budget-independent.
+# Output: tab-separated "branch\tbehind\tahead\tstash\tconflicted\tstaged\tdirty\tuntracked"
+function _prompt_git_data
+    set -l repo $argv[1]
+    set -l branch (command git -C "$repo" branch --show-current 2>/dev/null)
+    if test -z "$branch"
+        set branch (command git -C "$repo" tag --points-at HEAD 2>/dev/null | head -1)
+        if test -n "$branch"
+            set branch "#$branch"
+        else
+            set branch "@"(command git -C "$repo" rev-parse --short HEAD 2>/dev/null)
+        end
+    end
+
+    set -l stat (command git -C "$repo" --no-optional-locks status --porcelain 2>/dev/null)
+    set -l stash (command git -C "$repo" stash list 2>/dev/null | count)
+    set -l staged (string match -r '^[ADMR]' $stat | count)
+    set -l dirty (string match -r '^.[ADMR]' $stat | count)
+    set -l untracked (string match -r '^\?\?' $stat | count)
+    set -l conflicted (string match -r '^UU' $stat | count)
+    set -l behind 0
+    set -l ahead 0
+    set -l upstream (command git -C "$repo" rev-list --count --left-right \
+        @{upstream}...HEAD 2>/dev/null)
+    if test -n "$upstream"
+        echo $upstream | read -l b a
+        set behind $b
+        set ahead $a
+    end
+
+    printf '%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d' \
+        $branch $behind $ahead $stash $conflicted $staged $dirty $untracked
+end
+
+# Render cached git data with the current budget.
+function _prompt_git_render
+    set -l data $argv[1]
+    set -l max_width $argv[2]
+    test -z "$data"; and return 1
+    test $max_width -lt 4; and return 1
+
+    set -l fields (string split \t -- $data)
+    test (count $fields) -lt 8; and return 1
+
+    set -l branch $fields[1]
+    set -l behind $fields[2]
+    set -l ahead $fields[3]
+    set -l stash $fields[4]
+    set -l conflicted $fields[5]
+    set -l staged $fields[6]
+    set -l dirty $fields[7]
+    set -l untracked $fields[8]
+
+    set -l suffix_len 0
+    test $behind -gt 0     && set suffix_len (math "$suffix_len + 2 + "(string length -- $behind))
+    test $ahead -gt 0      && set suffix_len (math "$suffix_len + 2 + "(string length -- $ahead))
+    test $stash -gt 0      && set suffix_len (math "$suffix_len + 2 + "(string length -- $stash))
+    test $conflicted -gt 0 && set suffix_len (math "$suffix_len + 2 + "(string length -- $conflicted))
+    test $staged -gt 0     && set suffix_len (math "$suffix_len + 2 + "(string length -- $staged))
+    test $dirty -gt 0      && set suffix_len (math "$suffix_len + 2 + "(string length -- $dirty))
+    test $untracked -gt 0  && set suffix_len (math "$suffix_len + 2 + "(string length -- $untracked))
+
+    set -l branch_budget (math "$max_width - $suffix_len")
+    test $branch_budget -lt 2; and return 1
+    if test (string length -- $branch) -gt $branch_budget
+        set branch (_prompt_truncate_tail $branch $branch_budget)
+    end
+
+    if test $conflicted -gt 0
+        printf '%s' $_c_brred
+    else if test $staged -gt 0 -o $dirty -gt 0 -o $untracked -gt 0
+        printf '%s' $_c_brylw
+    else
+        printf '%s' $_c_brgrn
+    end
+    printf '%s' $branch
+
+    test $behind -gt 0     && printf '%s ⇣%s' $_c_brgrn $behind
+    test $ahead -gt 0      && printf '%s ⇡%s' $_c_brgrn $ahead
+    test $stash -gt 0      && printf '%s *%s' $_c_brgrn $stash
+    test $conflicted -gt 0 && printf '%s ~%s' $_c_brred $conflicted
+    test $staged -gt 0     && printf '%s +%s' $_c_brylw $staged
+    test $dirty -gt 0      && printf '%s !%s' $_c_brylw $dirty
+    test $untracked -gt 0  && printf '%s ?%s' $_c_brblu $untracked
+    true
+end
+
 function _prompt_git_refresh_async
     set -l repo $argv[1]
-    set -l max_branch $argv[2]
-    test -n "$max_branch"; or set max_branch 24
     set -l key (_prompt_git_cache_key $repo)
     set -l cache "$__dot_prompt_cache_dir/$key.git"
     set -l lock "$cache.lock"
@@ -240,14 +325,8 @@ function _prompt_git_refresh_async
     set -l lock_q (string escape -- $lock)
     set -l head_q (string escape -- $head_cache)
     printf '%s\n' \
-        "set _c_reset  \\e'[0m'" \
-        "set _c_brgrn  \\e'[92m'" \
-        "set _c_brylw  \\e'[93m'" \
-        "set _c_brred  \\e'[91m'" \
-        "set _c_brblu  \\e'[94m'" \
-        (functions _prompt_truncate_tail) \
-        (functions _prompt_git_build) \
-        "_prompt_git_build $repo_q $max_branch > $cache_q.tmp" \
+        (functions _prompt_git_data) \
+        "_prompt_git_data $repo_q > $cache_q.tmp" \
         "and mv $cache_q.tmp $cache_q" \
         "cat $repo_q/.git/HEAD > $head_q 2>/dev/null" \
         "rmdir $lock_q" \
@@ -257,8 +336,8 @@ function _prompt_git_refresh_async
 end
 
 function _prompt_git
-    set -l max_branch $argv[1]
-    test -n "$max_branch"; or set max_branch 24
+    set -l max_width $argv[1]
+    test -n "$max_width"; or set max_width 24
     command -sq git; or return
     set -l repo (_prompt_git_root)
     or return
@@ -272,17 +351,17 @@ function _prompt_git
     if test -f "$cache" -a -n "$head_now"
         set -l head_prev (cat "$head_cache" 2>/dev/null)
         if test "$head_now" != "$head_prev"
-            _prompt_git_build $repo $max_branch > "$cache.sync"
+            _prompt_git_data $repo > "$cache.sync"
             and mv "$cache.sync" "$cache"
             printf '%s' "$head_now" > "$head_cache"
-            cat "$cache"
-            return
         end
     end
 
-    _prompt_git_refresh_async $repo $max_branch
+    _prompt_git_refresh_async $repo
 
-    test -f "$cache"; and cat "$cache"
+    if test -f "$cache"
+        _prompt_git_render (cat "$cache") $max_width
+    end
 end
 
 function _prompt_arrow

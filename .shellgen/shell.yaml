@@ -429,9 +429,10 @@ modules:
             REPLY="${key}.bash"
         }
 
-        __dot_prompt_git_build() {
+        # Collect raw git data (branch + counts) — budget-independent.
+        # Output: tab-separated "branch\tbehind\tahead\tstash\tconflicted\tstaged\tdirty\tuntracked"
+        __dot_prompt_git_data() {
             local repo="$1"
-            local max_width="${2:-24}"
             local branch
             branch="$(git -C "$repo" branch --show-current 2>/dev/null)" || return
             if [[ -z "$branch" ]]; then
@@ -442,7 +443,6 @@ modules:
                     branch="@$(git -C "$repo" rev-parse --short HEAD 2>/dev/null)"
                 fi
             fi
-            (( max_width < 4 )) && return
 
             local stat staged=0 dirty=0 untracked=0 conflicted=0 stash=0
             stat="$(git -C "$repo" --no-optional-locks status --porcelain 2>/dev/null)"
@@ -461,7 +461,21 @@ modules:
                 ahead="${upstream##*$'	'}"
             fi
 
-            # Calculate display length of status indicators so branch can be sized
+            printf '%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d' \
+                "$branch" "$behind" "$ahead" "$stash" "$conflicted" "$staged" "$dirty" "$untracked"
+        }
+
+        # Render cached git data with the current budget.
+        __dot_prompt_git_render() {
+            local data="$1"
+            local max_width="$2"
+            [[ -z "$data" ]] && return 1
+            (( max_width < 4 )) && return 1
+
+            local branch behind ahead stash conflicted staged dirty untracked
+            IFS=$'\t' read -r branch behind ahead stash conflicted staged dirty untracked <<< "$data"
+            [[ -z "$branch" ]] && return 1
+
             local suffix_len=0
             (( behind     > 0 )) && (( suffix_len += 2 + ${#behind} ))
             (( ahead      > 0 )) && (( suffix_len += 2 + ${#ahead} ))
@@ -472,7 +486,7 @@ modules:
             (( untracked  > 0 )) && (( suffix_len += 2 + ${#untracked} ))
 
             local branch_budget=$(( max_width - suffix_len ))
-            (( branch_budget < 2 )) && return
+            (( branch_budget < 2 )) && return 1
             if (( ${#branch} > branch_budget )); then
                 __dot_prompt_truncate_tail "$branch" "$branch_budget"
                 branch="$REPLY"
@@ -495,7 +509,6 @@ modules:
 
         __dot_prompt_git_refresh_async() {
             local repo="$1"
-            local max_branch="${2:-24}"
             local key cache lock repo_q cache_q lock_q worker
             __dot_prompt_git_cache_key "$repo"
             key="$REPLY"
@@ -511,15 +524,10 @@ modules:
             printf -v cache_q '%q' "$cache"
             printf -v lock_q '%q' "$lock"
             worker="$(
-                declare -f __dot_prompt_truncate_tail __dot_prompt_git_build
+                declare -f __dot_prompt_git_data
                 printf '%s\n' \
-                    "__dc_reset='\[\e[0m\]'" \
-                    "__dc_brgrn='\[\e[92m\]'" \
-                    "__dc_brylw='\[\e[93m\]'" \
-                    "__dc_brred='\[\e[91m\]'" \
-                    "__dc_brblu='\[\e[94m\]'" \
                     "tmp=${cache_q}.tmp" \
-                    "__dot_prompt_git_build ${repo_q} ${max_branch} > \"\$tmp\" && mv \"\$tmp\" ${cache_q}" \
+                    "__dot_prompt_git_data ${repo_q} > \"\$tmp\" && mv \"\$tmp\" ${cache_q}" \
                     "rmdir ${lock_q}"
             )"
             bash --noprofile --norc -c "$worker" >/dev/null 2>&1 &
@@ -560,13 +568,16 @@ modules:
 
             git_budget=$(( max_width - pwd_len - arrow_len - 2 ))
             if (( git_budget >= 4 )) && [[ -n "$repo" ]]; then
-                __dot_prompt_git_refresh_async "$repo" "$git_budget"
+                __dot_prompt_git_refresh_async "$repo"
                 __dot_prompt_git_cache_key "$repo"
                 key="$REPLY"
                 cache="$__dot_prompt_cache_dir/$key.git"
                 if [[ -f "$cache" ]]; then
-                    git_segment="$(<"$cache")"
-                    [[ -n "$git_segment" ]] && git_segment=" ${git_segment}"
+                    local git_data
+                    git_data="$(<"$cache")"
+                    if [[ -n "$git_data" ]]; then
+                        git_segment=" $(__dot_prompt_git_render "$git_data" "$git_budget")"
+                    fi
                 fi
             fi
             PS1="${pwd_segment}${git_segment} ${arrow_color}❯${__dc_reset} "
