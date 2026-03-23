@@ -292,7 +292,8 @@ def test_fish_prompt_preserves_non_prompt_width():
     assert warm.returncode == 0, warm.stderr
     cache, head_cache = prompt_cache_paths(repo, env, "fish")
     cache_text = wait_for_prompt_cache(cache, head_cache)
-    assert "…" in strip_ansi(cache_text), cache_text
+    # Cache stores raw data (branch\tcounts); verify branch is present
+    assert "prompt-width-testing" in cache_text, cache_text
 
     script = textwrap.dedent(
         f"""
@@ -664,7 +665,8 @@ def test_fish_prompt_uses_cached_git_segment_without_sync_rebuild():
     assert warm.returncode == 0, warm.stderr
     cache, head_cache = prompt_cache_paths(repo, warm_env, "fish")
     cache_text = wait_for_prompt_cache(cache, head_cache)
-    assert "…" in strip_ansi(cache_text), cache_text
+    # Cache stores raw data (branch\tcounts); verify branch is present
+    assert "prompt-width-testing" in cache_text, cache_text
 
     env = warm_env.copy()
     env["PATH"] = os.pathsep.join([str(slow_git_dir), env.get("PATH", "")])
