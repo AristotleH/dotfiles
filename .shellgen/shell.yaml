@@ -195,6 +195,18 @@ modules:
     paths:
       - "$HOME/.local/bin"
 
+  # Default editor
+  - name: editor-setup
+    prefix: "05"
+    description: Editor configuration
+    conditional:
+      - if: { command_exists: nvim }
+        env: { EDITOR: nvim, VISUAL: nvim }
+      - elif: { command_exists: vim }
+        env: { EDITOR: vim, VISUAL: vim }
+      - else:
+        env: { EDITOR: vi, VISUAL: vi }
+
   # Aliases module — identical aliases across shells
   - name: eza
     prefix: "40"
@@ -282,7 +294,7 @@ modules:
 
         __dot_prompt_max_width() {
             local cols="${COLUMNS:-80}"
-            local width=$(( cols - 30 ))
+            local width=$(( cols - 48 ))
             (( width < 0 )) && width=0
             REPLY="$width"
         }
@@ -622,7 +634,7 @@ modules:
 
         function global:__DotPromptMaxWidth {
             $cols = $Host.UI.RawUI.WindowSize.Width
-            return [Math]::Max(0, $cols - 30)
+            return [Math]::Max(0, $cols - 48)
         }
 
         function global:__DotPromptSegmentLimit {

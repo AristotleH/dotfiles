@@ -374,8 +374,8 @@ def test_zsh_prompt_respects_width_with_many_indicators():
     )
     assert result.returncode == 0, result.stderr
     rendered = strip_ansi(last_nonempty_line(result.stdout, "zsh indicator width"))
-    # Total prompt must leave at least 30 cols remaining
-    assert len(rendered) <= 50, f"prompt too wide ({len(rendered)} chars): {rendered}"
+    # Total prompt must leave at least 48 cols remaining
+    assert len(rendered) <= 32, f"prompt too wide ({len(rendered)} chars): {rendered}"
 
 
 def test_fish_prompt_respects_width_with_many_indicators():
@@ -425,7 +425,7 @@ def test_fish_prompt_respects_width_with_many_indicators():
     )
     assert result.returncode == 0, result.stderr
     rendered = strip_ansi(result.stdout.strip())
-    assert len(rendered) <= 50, f"prompt too wide ({len(rendered)} chars): {rendered}"
+    assert len(rendered) <= 32, f"prompt too wide ({len(rendered)} chars): {rendered}"
 
 
 def test_bash_prompt_respects_width_with_many_indicators():
@@ -451,7 +451,7 @@ def test_bash_prompt_respects_width_with_many_indicators():
     result = run_shell(["bash", "--noprofile", "--norc", "-ic"], script)
     assert result.returncode == 0, result.stderr
     rendered = strip_ansi(last_nonempty_line(result.stdout, "bash indicator width"))
-    assert len(rendered) <= 50, f"prompt too wide ({len(rendered)} chars): {rendered}"
+    assert len(rendered) <= 32, f"prompt too wide ({len(rendered)} chars): {rendered}"
 
 
 def test_bash_prompt_clears_git_segment_after_leaving_repo():

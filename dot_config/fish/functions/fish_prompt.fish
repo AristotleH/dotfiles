@@ -43,7 +43,7 @@ end
 function _prompt_max_width
     set -l cols $COLUMNS
     test -n "$cols"; or set cols 80
-    printf '%s' (math "max(0, $cols - 30)")
+    printf '%s' (math "max(0, $cols - 48)")
 end
 
 function _prompt_segment_limit

@@ -36,7 +36,7 @@ _prompt_truncate_tail() {
 
 _prompt_max_width() {
   local cols=${COLUMNS:-80}
-  local width=$(( cols - 30 ))
+  local width=$(( cols - 48 ))
   (( width < 0 )) && width=0
   printf '%s' "$width"
 }
