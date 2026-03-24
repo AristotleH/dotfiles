@@ -112,12 +112,18 @@ def make_slow_git_dir() -> Path:
     return tempdir
 
 
+def _git_config_repo(repo: Path) -> None:
+    """Apply minimal git config needed for test repos."""
+    subprocess.run(["git", "-C", str(repo), "config", "user.name", "Prompt Test"], check=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.email", "prompt@example.com"], check=True)
+    subprocess.run(["git", "-C", str(repo), "config", "commit.gpgsign", "false"], check=True)
+
+
 def make_repo() -> Path:
     repo = Path(tempfile.mkdtemp(prefix="prompt-repo-")) / "a" / "verylongsegment" / "b" / "repository"
     repo.mkdir(parents=True)
     subprocess.run(["git", "init", str(repo)], check=True, capture_output=True, text=True)
-    subprocess.run(["git", "-C", str(repo), "config", "user.name", "Prompt Test"], check=True)
-    subprocess.run(["git", "-C", str(repo), "config", "user.email", "prompt@example.com"], check=True)
+    _git_config_repo(repo)
     (repo / "tracked.txt").write_text("hello\n")
     subprocess.run(["git", "-C", str(repo), "add", "tracked.txt"], check=True)
     subprocess.run(["git", "-C", str(repo), "commit", "-m", "init"], check=True, capture_output=True)
@@ -128,8 +134,7 @@ def make_branch_repo(prefix: str, branch: str) -> Path:
     repo = Path(tempfile.mkdtemp(prefix=prefix)) / "verylongsegment" / "repo"
     repo.mkdir(parents=True)
     subprocess.run(["git", "init", str(repo)], check=True, capture_output=True, text=True)
-    subprocess.run(["git", "-C", str(repo), "config", "user.name", "Prompt Test"], check=True)
-    subprocess.run(["git", "-C", str(repo), "config", "user.email", "prompt@example.com"], check=True)
+    _git_config_repo(repo)
     (repo / "tracked.txt").write_text("hello\n")
     subprocess.run(["git", "-C", str(repo), "add", "tracked.txt"], check=True)
     subprocess.run(["git", "-C", str(repo), "commit", "-m", "init"], check=True, capture_output=True)

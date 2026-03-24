@@ -352,6 +352,7 @@ function _prompt_git_refresh_async
         "rm -f (status filename)" \
         > $script
     fish --private $script >/dev/null 2>&1 &
+    disown
 end
 
 function _prompt_git
