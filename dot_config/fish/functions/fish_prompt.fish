@@ -351,8 +351,8 @@ function _prompt_git_refresh_async
         "rmdir $lock_q" \
         "rm -f (status filename)" \
         > $script
-    fish --private $script >/dev/null 2>&1 &
-    disown
+    command nohup fish --private $script >/dev/null 2>&1 &
+    disown 2>/dev/null
 end
 
 function _prompt_git
