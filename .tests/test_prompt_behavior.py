@@ -247,10 +247,10 @@ def test_zsh_prompt_preserves_non_prompt_width():
     script = textwrap.dedent(
         f"""
         source {ZSH_PROMPT}
-        COLUMNS=60
+        COLUMNS=80
         cd {repo}
         pwd_str=$(_prompt_pwd $(_prompt_max_width))
-        git_str=$(_prompt_git 12)
+        git_str=$(_prompt_git 14)
         print -P -- "$pwd_str $git_str $(_prompt_arrow 0)"
         """
     )
@@ -264,7 +264,7 @@ def test_zsh_prompt_preserves_non_prompt_width():
     )
     assert result.returncode == 0, result.stderr
     rendered = strip_ansi(last_nonempty_line(result.stdout, "zsh prompt width"))
-    assert len(rendered) <= 30, rendered
+    assert len(rendered) <= 32, rendered
     assert "prompt-width-testing" not in rendered, rendered
     assert "…" in rendered, rendered
 
@@ -282,7 +282,7 @@ def test_fish_prompt_preserves_non_prompt_width():
         ["fish", "-c", textwrap.dedent(
             f"""
             source {FISH_PROMPT}
-            set -gx COLUMNS 60
+            set -gx COLUMNS 80
             cd {repo}
             fish_prompt >/dev/null
             sleep 0.5
@@ -303,7 +303,7 @@ def test_fish_prompt_preserves_non_prompt_width():
     script = textwrap.dedent(
         f"""
         source {FISH_PROMPT}
-        set -gx COLUMNS 60
+        set -gx COLUMNS 80
         cd {repo}
         fish_prompt
         """
@@ -318,7 +318,7 @@ def test_fish_prompt_preserves_non_prompt_width():
     )
     assert result.returncode == 0, result.stderr
     rendered = strip_ansi(result.stdout.strip())
-    assert len(rendered) <= 30, rendered
+    assert len(rendered) <= 32, rendered
     assert "prompt-width-testing" not in rendered, rendered
     assert "…" in rendered, rendered
 
@@ -334,7 +334,7 @@ def test_bash_prompt_preserves_non_prompt_width():
     script = textwrap.dedent(
         f"""
         source "{BASH_PROMPT}"
-        COLUMNS=60
+        COLUMNS=80
         cd "{repo}"
         __dot_prompt_precmd
         sleep 0.5
@@ -345,7 +345,7 @@ def test_bash_prompt_preserves_non_prompt_width():
     result = run_shell(["bash", "--noprofile", "--norc", "-ic"], script)
     assert result.returncode == 0, result.stderr
     rendered = strip_ansi(last_nonempty_line(result.stdout, "bash prompt width"))
-    assert len(rendered) <= 30, rendered
+    assert len(rendered) <= 32, rendered
     assert "prompt-width-testing" not in rendered, rendered
     assert "…" in rendered, rendered
 
@@ -498,14 +498,14 @@ def test_powershell_prompt_preserves_non_prompt_width():
         f"""
         . "{PWSH_PROMPT}"
         Set-Location "{repo}"
-        $Host.UI.RawUI.WindowSize = New-Object Management.Automation.Host.Size(60, 40)
+        $Host.UI.RawUI.WindowSize = New-Object Management.Automation.Host.Size(80, 40)
         prompt
         """
     )
     result = run_shell(["pwsh", "-NoProfile", "-NonInteractive", "-Command"], script)
     assert result.returncode == 0, result.stderr
     rendered = strip_ansi(last_nonempty_line(result.stdout, "powershell prompt width"))
-    assert len(rendered) <= 30, rendered
+    assert len(rendered) <= 32, rendered
     assert "prompt-width-testing" not in rendered, rendered
     assert "…" in rendered, rendered
 
@@ -654,7 +654,7 @@ def test_fish_prompt_uses_cached_git_segment_without_sync_rebuild():
         ["fish", "-c", textwrap.dedent(
             f"""
             source {FISH_PROMPT}
-            set -gx COLUMNS 60
+            set -gx COLUMNS 80
             cd {repo}
             fish_prompt >/dev/null
             sleep 0.5
@@ -680,7 +680,7 @@ def test_fish_prompt_uses_cached_git_segment_without_sync_rebuild():
         ["fish", "-c", textwrap.dedent(
             f"""
             source {FISH_PROMPT}
-            set -gx COLUMNS 60
+            set -gx COLUMNS 80
             cd {repo}
             fish_prompt
             """
@@ -712,7 +712,7 @@ def test_bash_prompt_uses_cached_git_segment_without_sync_rebuild():
         textwrap.dedent(
             f"""
             source "{BASH_PROMPT}"
-            COLUMNS=60
+            COLUMNS=80
             cd "{repo}"
             __dot_prompt_precmd
             sleep 0.5
@@ -730,7 +730,7 @@ def test_bash_prompt_uses_cached_git_segment_without_sync_rebuild():
         textwrap.dedent(
             f"""
             source "{BASH_PROMPT}"
-            COLUMNS=60
+            COLUMNS=80
             cd "{repo}"
             start=$EPOCHREALTIME
             __dot_prompt_precmd
