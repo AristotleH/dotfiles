@@ -195,6 +195,18 @@ modules:
     paths:
       - "$HOME/.local/bin"
 
+  # Default editor
+  - name: editor-setup
+    prefix: "05"
+    description: Editor configuration
+    conditional:
+      - if: { command_exists: nvim }
+        env: { EDITOR: nvim, VISUAL: nvim }
+      - elif: { command_exists: vim }
+        env: { EDITOR: vim, VISUAL: vim }
+      - else:
+        env: { EDITOR: vi, VISUAL: vi }
+
   # Aliases module — identical aliases across shells
   - name: eza
     prefix: "40"
@@ -282,7 +294,7 @@ modules:
 
         __dot_prompt_max_width() {
             local cols="${COLUMNS:-80}"
-            local width=$(( cols - 30 ))
+            local width=$(( cols - 48 ))
             (( width < 0 )) && width=0
             REPLY="$width"
         }
@@ -429,6 +441,24 @@ modules:
             REPLY="${key}.bash"
         }
 
+        # Return the path to the HEAD file for a repo, handling worktrees
+        # where .git is a file rather than a directory.
+        __dot_prompt_git_head_file() {
+            local repo="$1"
+            local dot_git="$repo/.git"
+            if [[ -f "$dot_git" ]]; then
+                local gitdir
+                gitdir="$(sed 's/^gitdir: *//' "$dot_git" 2>/dev/null)"
+                gitdir="${gitdir%"${gitdir##*[![:space:]]}"}"
+                if [[ "$gitdir" != /* ]]; then
+                    gitdir="$(cd "$repo" && cd "$gitdir" && pwd)"
+                fi
+                REPLY="$gitdir/HEAD"
+            else
+                REPLY="$repo/.git/HEAD"
+            fi
+        }
+
         # Collect raw git data (branch + counts) — budget-independent.
         # Output: tab-separated "branch\tbehind\tahead\tstash\tconflicted\tstaged\tdirty\tuntracked"
         __dot_prompt_git_data() {
@@ -509,7 +539,7 @@ modules:
 
         __dot_prompt_git_refresh_async() {
             local repo="$1"
-            local key cache lock repo_q cache_q lock_q worker
+            local key cache lock repo_q cache_q lock_q head_q worker
             __dot_prompt_git_cache_key "$repo"
             key="$REPLY"
             cache="$__dot_prompt_cache_dir/$key.git"
@@ -520,14 +550,19 @@ modules:
                 return
             fi
 
+            local head_cache="$__dot_prompt_cache_dir/$key.head"
             printf -v repo_q '%q' "$repo"
             printf -v cache_q '%q' "$cache"
             printf -v lock_q '%q' "$lock"
+            printf -v head_q '%q' "$head_cache"
             worker="$(
                 declare -f __dot_prompt_git_data
+                declare -f __dot_prompt_git_head_file
                 printf '%s\n' \
                     "tmp=${cache_q}.tmp" \
                     "__dot_prompt_git_data ${repo_q} > \"\$tmp\" && mv \"\$tmp\" ${cache_q}" \
+                    "__dot_prompt_git_head_file ${repo_q}" \
+                    "cat \"\$REPLY\" > ${head_q} 2>/dev/null" \
                     "rmdir ${lock_q}"
             )"
             bash --noprofile --norc -c "$worker" >/dev/null 2>&1 &
@@ -565,10 +600,34 @@ modules:
 
             git_budget=$(( max_width - pwd_len - arrow_len - 2 ))
             if (( git_budget >= 4 )) && [[ -n "$repo" ]]; then
-                __dot_prompt_git_refresh_async "$repo"
                 __dot_prompt_git_cache_key "$repo"
                 key="$REPLY"
                 cache="$__dot_prompt_cache_dir/$key.git"
+
+                # If HEAD changed since the last cached build, rebuild synchronously
+                # so the new branch/status is visible immediately after git switch etc.
+                local did_sync=0
+                if [[ -f "$cache" ]]; then
+                    local head_cache="$__dot_prompt_cache_dir/$key.head"
+                    __dot_prompt_git_head_file "$repo"
+                    local head_now
+                    head_now="$(<"$REPLY" 2>/dev/null)" || head_now=''
+                    if [[ -n "$head_now" ]]; then
+                        local head_prev
+                        head_prev="$(<"$head_cache" 2>/dev/null)" || head_prev=''
+                        if [[ "$head_now" != "$head_prev" ]]; then
+                            __dot_prompt_git_data "$repo" > "$cache.sync" \
+                                && mv "$cache.sync" "$cache"
+                            printf '%s' "$head_now" > "$head_cache"
+                            did_sync=1
+                        fi
+                    fi
+                fi
+
+                if (( did_sync == 0 )); then
+                    __dot_prompt_git_refresh_async "$repo"
+                fi
+
                 if [[ -f "$cache" ]]; then
                     local git_data
                     git_data="$(<"$cache")"
@@ -622,7 +681,7 @@ modules:
 
         function global:__DotPromptMaxWidth {
             $cols = $Host.UI.RawUI.WindowSize.Width
-            return [Math]::Max(0, $cols - 30)
+            return [Math]::Max(0, $cols - 48)
         }
 
         function global:__DotPromptSegmentLimit {

@@ -112,12 +112,18 @@ def make_slow_git_dir() -> Path:
     return tempdir
 
 
+def _git_config_repo(repo: Path) -> None:
+    """Apply minimal git config needed for test repos."""
+    subprocess.run(["git", "-C", str(repo), "config", "user.name", "Prompt Test"], check=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.email", "prompt@example.com"], check=True)
+    subprocess.run(["git", "-C", str(repo), "config", "commit.gpgsign", "false"], check=True)
+
+
 def make_repo() -> Path:
     repo = Path(tempfile.mkdtemp(prefix="prompt-repo-")) / "a" / "verylongsegment" / "b" / "repository"
     repo.mkdir(parents=True)
     subprocess.run(["git", "init", str(repo)], check=True, capture_output=True, text=True)
-    subprocess.run(["git", "-C", str(repo), "config", "user.name", "Prompt Test"], check=True)
-    subprocess.run(["git", "-C", str(repo), "config", "user.email", "prompt@example.com"], check=True)
+    _git_config_repo(repo)
     (repo / "tracked.txt").write_text("hello\n")
     subprocess.run(["git", "-C", str(repo), "add", "tracked.txt"], check=True)
     subprocess.run(["git", "-C", str(repo), "commit", "-m", "init"], check=True, capture_output=True)
@@ -128,8 +134,7 @@ def make_branch_repo(prefix: str, branch: str) -> Path:
     repo = Path(tempfile.mkdtemp(prefix=prefix)) / "verylongsegment" / "repo"
     repo.mkdir(parents=True)
     subprocess.run(["git", "init", str(repo)], check=True, capture_output=True, text=True)
-    subprocess.run(["git", "-C", str(repo), "config", "user.name", "Prompt Test"], check=True)
-    subprocess.run(["git", "-C", str(repo), "config", "user.email", "prompt@example.com"], check=True)
+    _git_config_repo(repo)
     (repo / "tracked.txt").write_text("hello\n")
     subprocess.run(["git", "-C", str(repo), "add", "tracked.txt"], check=True)
     subprocess.run(["git", "-C", str(repo), "commit", "-m", "init"], check=True, capture_output=True)
@@ -242,11 +247,10 @@ def test_zsh_prompt_preserves_non_prompt_width():
     script = textwrap.dedent(
         f"""
         source {ZSH_PROMPT}
-        COLUMNS=60
+        COLUMNS=80
         cd {repo}
-        pwd_str=$(_prompt_pwd $(_prompt_max_width))
-        git_str=$(_prompt_git 12)
-        print -P -- "$pwd_str $git_str $(_prompt_arrow 0)"
+        _prompt_build 0
+        print -P -- "$PROMPT"
         """
     )
     result = subprocess.run(
@@ -259,7 +263,7 @@ def test_zsh_prompt_preserves_non_prompt_width():
     )
     assert result.returncode == 0, result.stderr
     rendered = strip_ansi(last_nonempty_line(result.stdout, "zsh prompt width"))
-    assert len(rendered) <= 30, rendered
+    assert len(rendered) <= 32, rendered
     assert "prompt-width-testing" not in rendered, rendered
     assert "…" in rendered, rendered
 
@@ -277,7 +281,7 @@ def test_fish_prompt_preserves_non_prompt_width():
         ["fish", "-c", textwrap.dedent(
             f"""
             source {FISH_PROMPT}
-            set -gx COLUMNS 60
+            set -gx COLUMNS 80
             cd {repo}
             fish_prompt >/dev/null
             sleep 0.5
@@ -298,7 +302,7 @@ def test_fish_prompt_preserves_non_prompt_width():
     script = textwrap.dedent(
         f"""
         source {FISH_PROMPT}
-        set -gx COLUMNS 60
+        set -gx COLUMNS 80
         cd {repo}
         fish_prompt
         """
@@ -313,7 +317,7 @@ def test_fish_prompt_preserves_non_prompt_width():
     )
     assert result.returncode == 0, result.stderr
     rendered = strip_ansi(result.stdout.strip())
-    assert len(rendered) <= 30, rendered
+    assert len(rendered) <= 32, rendered
     assert "prompt-width-testing" not in rendered, rendered
     assert "…" in rendered, rendered
 
@@ -329,7 +333,7 @@ def test_bash_prompt_preserves_non_prompt_width():
     script = textwrap.dedent(
         f"""
         source "{BASH_PROMPT}"
-        COLUMNS=60
+        COLUMNS=80
         cd "{repo}"
         __dot_prompt_precmd
         sleep 0.5
@@ -340,7 +344,7 @@ def test_bash_prompt_preserves_non_prompt_width():
     result = run_shell(["bash", "--noprofile", "--norc", "-ic"], script)
     assert result.returncode == 0, result.stderr
     rendered = strip_ansi(last_nonempty_line(result.stdout, "bash prompt width"))
-    assert len(rendered) <= 30, rendered
+    assert len(rendered) <= 32, rendered
     assert "prompt-width-testing" not in rendered, rendered
     assert "…" in rendered, rendered
 
@@ -374,8 +378,8 @@ def test_zsh_prompt_respects_width_with_many_indicators():
     )
     assert result.returncode == 0, result.stderr
     rendered = strip_ansi(last_nonempty_line(result.stdout, "zsh indicator width"))
-    # Total prompt must leave at least 30 cols remaining
-    assert len(rendered) <= 50, f"prompt too wide ({len(rendered)} chars): {rendered}"
+    # Total prompt must leave at least 48 cols remaining
+    assert len(rendered) <= 32, f"prompt too wide ({len(rendered)} chars): {rendered}"
 
 
 def test_fish_prompt_respects_width_with_many_indicators():
@@ -425,7 +429,7 @@ def test_fish_prompt_respects_width_with_many_indicators():
     )
     assert result.returncode == 0, result.stderr
     rendered = strip_ansi(result.stdout.strip())
-    assert len(rendered) <= 50, f"prompt too wide ({len(rendered)} chars): {rendered}"
+    assert len(rendered) <= 32, f"prompt too wide ({len(rendered)} chars): {rendered}"
 
 
 def test_bash_prompt_respects_width_with_many_indicators():
@@ -451,7 +455,7 @@ def test_bash_prompt_respects_width_with_many_indicators():
     result = run_shell(["bash", "--noprofile", "--norc", "-ic"], script)
     assert result.returncode == 0, result.stderr
     rendered = strip_ansi(last_nonempty_line(result.stdout, "bash indicator width"))
-    assert len(rendered) <= 50, f"prompt too wide ({len(rendered)} chars): {rendered}"
+    assert len(rendered) <= 32, f"prompt too wide ({len(rendered)} chars): {rendered}"
 
 
 def test_bash_prompt_clears_git_segment_after_leaving_repo():
@@ -493,14 +497,14 @@ def test_powershell_prompt_preserves_non_prompt_width():
         f"""
         . "{PWSH_PROMPT}"
         Set-Location "{repo}"
-        $Host.UI.RawUI.WindowSize = New-Object Management.Automation.Host.Size(60, 40)
+        $Host.UI.RawUI.WindowSize = New-Object Management.Automation.Host.Size(80, 40)
         prompt
         """
     )
     result = run_shell(["pwsh", "-NoProfile", "-NonInteractive", "-Command"], script)
     assert result.returncode == 0, result.stderr
     rendered = strip_ansi(last_nonempty_line(result.stdout, "powershell prompt width"))
-    assert len(rendered) <= 30, rendered
+    assert len(rendered) <= 32, rendered
     assert "prompt-width-testing" not in rendered, rendered
     assert "…" in rendered, rendered
 
@@ -649,7 +653,7 @@ def test_fish_prompt_uses_cached_git_segment_without_sync_rebuild():
         ["fish", "-c", textwrap.dedent(
             f"""
             source {FISH_PROMPT}
-            set -gx COLUMNS 60
+            set -gx COLUMNS 80
             cd {repo}
             fish_prompt >/dev/null
             sleep 0.5
@@ -675,7 +679,7 @@ def test_fish_prompt_uses_cached_git_segment_without_sync_rebuild():
         ["fish", "-c", textwrap.dedent(
             f"""
             source {FISH_PROMPT}
-            set -gx COLUMNS 60
+            set -gx COLUMNS 80
             cd {repo}
             fish_prompt
             """
@@ -707,7 +711,7 @@ def test_bash_prompt_uses_cached_git_segment_without_sync_rebuild():
         textwrap.dedent(
             f"""
             source "{BASH_PROMPT}"
-            COLUMNS=60
+            COLUMNS=80
             cd "{repo}"
             __dot_prompt_precmd
             sleep 0.5
@@ -725,7 +729,7 @@ def test_bash_prompt_uses_cached_git_segment_without_sync_rebuild():
         textwrap.dedent(
             f"""
             source "{BASH_PROMPT}"
-            COLUMNS=60
+            COLUMNS=80
             cd "{repo}"
             start=$EPOCHREALTIME
             __dot_prompt_precmd
