@@ -249,9 +249,8 @@ def test_zsh_prompt_preserves_non_prompt_width():
         source {ZSH_PROMPT}
         COLUMNS=80
         cd {repo}
-        pwd_str=$(_prompt_pwd $(_prompt_max_width))
-        git_str=$(_prompt_git 14)
-        print -P -- "$pwd_str $git_str $(_prompt_arrow 0)"
+        _prompt_build 0
+        print -P -- "$PROMPT"
         """
     )
     result = subprocess.run(
