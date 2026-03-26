@@ -565,7 +565,7 @@ modules:
                     "cat \"\$REPLY\" > ${head_q} 2>/dev/null" \
                     "rmdir ${lock_q}"
             )"
-            bash --noprofile --norc -c "$worker" >/dev/null 2>&1 &
+            (bash --noprofile --norc -c "$worker" >/dev/null 2>&1 &)
         }
 
         __dot_prompt_precmd() {
