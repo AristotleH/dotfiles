@@ -230,16 +230,21 @@ modules:
   # Custom module — declarative guards + body
   - name: tmux
     prefix: "70"
-    description: Tmux auto-attach/start
-    comment: Set TMUX_AUTO_ATTACH=1 to enable
+    description: Tmux auto-start
+    comment: "Auto-starts tmux on new terminals. Set TMUX_NO_AUTO=1 to disable."
     guards:
       - { command_exists: tmux }
-      - { env_equals: { var: TMUX_AUTO_ATTACH, value: "1" } }
+      - is_interactive
       - is_tty
       - { env_not_set: TMUX }
+      - { env_not_set: TMUX_NO_AUTO }
       - { not_env_equals: { var: TERM_PROGRAM, value: vscode } }
-      - is_interactive
-    body: "tmux attach 2>/dev/null || tmux new-session"
+      - { not_env_equals: { var: TERM, value: dumb } }
+    body:
+      posix: |
+        exec tmux new-session -A -s main
+      fish: |
+        exec tmux new-session -A -s main
 
   - name: prompt
     prefix: "80"
