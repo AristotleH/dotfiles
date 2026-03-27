@@ -630,11 +630,19 @@ modules:
                 key="$REPLY"
                 cache="$__dot_prompt_cache_dir/$key.git"
 
-                # If HEAD changed since the last cached build, rebuild synchronously
-                # so the new branch/status is visible immediately after git switch etc.
                 local did_sync=0
-                if [[ -f "$cache" ]]; then
-                    local head_cache="$__dot_prompt_cache_dir/$key.head"
+                local head_cache="$__dot_prompt_cache_dir/$key.head"
+                mkdir -p "$__dot_prompt_cache_dir" 2>/dev/null
+
+                if [[ ! -f "$cache" ]]; then
+                    # No cache yet — synchronous fetch so the first prompt has git info.
+                    __dot_prompt_git_data "$repo" > "$cache.sync" \
+                        && mv "$cache.sync" "$cache"
+                    __dot_prompt_git_head_file "$repo"
+                    { cat "$REPLY" > "$head_cache"; } 2>/dev/null
+                    did_sync=1
+                elif [[ -f "$cache" ]]; then
+                    # Cache exists; rebuild synchronously when HEAD changed (branch switch).
                     __dot_prompt_git_head_file "$repo"
                     local head_now
                     head_now="$(<"$REPLY" 2>/dev/null)" || head_now=''

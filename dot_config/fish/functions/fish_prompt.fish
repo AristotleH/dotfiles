@@ -392,11 +392,19 @@ function _prompt_git
     set -l head_cache "$__dot_prompt_cache_dir/$key.head"
     set -l head_now (cat (_prompt_git_head_file $repo) 2>/dev/null)
 
-    # If HEAD changed since the last cached build, rebuild synchronously so the
-    # new branch/status is visible immediately.  Only runs when a cache already
-    # exists (first-prompt blank is acceptable; async covers that case).
     set -l did_sync 0
-    if test -f "$cache" -a -n "$head_now"
+    mkdir -p $__dot_prompt_cache_dir 2>/dev/null
+
+    if not test -f "$cache"
+        # No cache yet — synchronous fetch so the first prompt has git info.
+        _prompt_git_data $repo > "$cache.sync"
+        and mv "$cache.sync" "$cache"
+        if test -n "$head_now"
+            printf '%s' "$head_now" > "$head_cache"
+        end
+        set did_sync 1
+    else if test -n "$head_now"
+        # Cache exists; rebuild synchronously when HEAD changed (branch switch).
         set -l head_prev (cat "$head_cache" 2>/dev/null)
         if test "$head_now" != "$head_prev"
             _prompt_git_data $repo > "$cache.sync"

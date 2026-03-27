@@ -585,13 +585,15 @@ PY
 
 
 def test_fish_prompt_git_refresh_is_async():
+    """After initial sync populate, subsequent cache refreshes are async (non-blocking)."""
     if not shell_available("fish") or not FISH_PROMPT.exists() or not shutil.which("git"):
         return
 
     repo = make_repo()
     slow_git_dir = make_slow_git_dir()
     prompt_path = os.pathsep.join([str(slow_git_dir), os.environ.get("PATH", "")])
-    start = time.perf_counter()
+    # First prompt does a sync fetch (populates cache).
+    # Second prompt should be fast — cache hit, async refresh in background.
     result = run_shell(
         ["env", f"PATH={prompt_path}", "fish", "-c"],
         textwrap.dedent(
@@ -600,16 +602,21 @@ def test_fish_prompt_git_refresh_is_async():
             set -gx COLUMNS 120
             cd {repo}
             fish_prompt >/dev/null
+            set -l t0 (date +%s%N)
+            fish_prompt >/dev/null
+            set -l t1 (date +%s%N)
+            math "($t1 - $t0) / 1000000000.0"
             """
         ),
         timeout=20,
     )
-    elapsed = time.perf_counter() - start
     assert result.returncode == 0, result.stderr
+    elapsed = float(last_nonempty_line(result.stdout, "fish async timing"))
     assert elapsed < 0.18, elapsed
 
 
 def test_bash_prompt_git_refresh_is_async():
+    """After initial sync populate, subsequent cache refreshes are async (non-blocking)."""
     if not shell_available("bash") or not BASH_PROMPT.exists() or not shutil.which("git"):
         return
 
@@ -623,6 +630,9 @@ def test_bash_prompt_git_refresh_is_async():
             source "{BASH_PROMPT}"
             COLUMNS=120
             cd "{repo}"
+            # First prompt: sync (populates cache, may be slow with slow git)
+            __dot_prompt_precmd
+            # Second prompt: should be fast (cache hit, async refresh)
             start=$EPOCHREALTIME
             __dot_prompt_precmd
             end=$EPOCHREALTIME
@@ -829,7 +839,7 @@ def make_worktree_repo() -> tuple[Path, Path]:
 
 
 def test_bash_prompt_worktree_shows_git_info():
-    """Git info renders inside a linked worktree."""
+    """First prompt in a worktree must show git info (no async wait)."""
     if not shell_available("bash") or not BASH_PROMPT.exists() or not shutil.which("git"):
         return
 
@@ -845,34 +855,24 @@ def test_bash_prompt_worktree_shows_git_info():
             COLUMNS=120
             cd "{wt}"
             __dot_prompt_precmd
-            for idx in $(seq 20); do
-                sleep 0.2
-                __dot_prompt_precmd
-                case "$PS1" in
-                    *wt-branch*)
-                        printf 'ok\\n'
-                        exit 0
-                        ;;
-                esac
-            done
             printf '%s\\n' "$PS1"
-            exit 1
             """
         ),
-        timeout=20,
+        timeout=10,
     )
-    rendered = strip_ansi(result.stdout.strip() or result.stderr)
-    assert result.returncode == 0, f"git info not rendered in worktree: {rendered}"
+    assert result.returncode == 0, result.stderr
+    assert "wt-branch" in result.stdout, (
+        f"first prompt in worktree must show branch: {strip_ansi(result.stdout)!r}"
+    )
 
 
 def test_bash_prompt_worktree_shows_indicator():
-    """Worktree prompt includes the ⊕ prefix."""
+    """First prompt in a worktree includes the ⊕ prefix."""
     if not shell_available("bash") or not BASH_PROMPT.exists() or not shutil.which("git"):
         return
 
     _main, wt = make_worktree_repo()
     env = isolated_prompt_env()
-    cache, head_cache = prompt_cache_paths(wt, env, "bash")
     result = run_shell(
         ["bash", "--noprofile", "--norc", "-ic"],
         textwrap.dedent(
@@ -883,24 +883,16 @@ def test_bash_prompt_worktree_shows_indicator():
             COLUMNS=120
             cd "{wt}"
             __dot_prompt_precmd
-            for idx in $(seq 20); do
-                sleep 0.2
-                __dot_prompt_precmd
-                case "$PS1" in
-                    *⊕*)
-                        printf 'ok\\n'
-                        exit 0
-                        ;;
-                esac
-            done
             printf '%s\\n' "$PS1"
-            exit 1
             """
         ),
-        timeout=20,
+        timeout=10,
     )
-    rendered = strip_ansi(result.stdout.strip() or result.stderr)
-    assert result.returncode == 0, f"worktree indicator ⊕ not found in prompt: {rendered}"
+    assert result.returncode == 0, result.stderr
+    rendered = result.stdout
+    assert "⊕" in rendered, (
+        f"first prompt in worktree must show ⊕ indicator: {strip_ansi(rendered)!r}"
+    )
 
 
 def test_bash_prompt_non_worktree_no_indicator():
@@ -949,7 +941,7 @@ def test_bash_prompt_non_worktree_no_indicator():
 
 
 def test_fish_prompt_worktree_shows_git_info():
-    """Git info renders inside a linked worktree (Fish)."""
+    """First prompt in a worktree shows git info (Fish)."""
     if not shell_available("fish") or not FISH_PROMPT.exists() or not shutil.which("git"):
         return
 
@@ -961,8 +953,6 @@ def test_fish_prompt_worktree_shows_git_info():
             source {FISH_PROMPT}
             set -gx COLUMNS 120
             cd {wt}
-            fish_prompt >/dev/null
-            sleep 0.5
             fish_prompt
             """
         ),
@@ -970,11 +960,11 @@ def test_fish_prompt_worktree_shows_git_info():
     )
     assert result.returncode == 0, result.stderr
     rendered = strip_ansi(result.stdout.strip())
-    assert "wt-branch" in rendered, f"worktree branch not shown: {rendered}"
+    assert "wt-branch" in rendered, f"first prompt in worktree must show branch: {rendered!r}"
 
 
 def test_fish_prompt_worktree_shows_indicator():
-    """Worktree prompt includes the ⊕ prefix (Fish)."""
+    """First prompt in a worktree includes the ⊕ prefix (Fish)."""
     if not shell_available("fish") or not FISH_PROMPT.exists() or not shutil.which("git"):
         return
 
@@ -986,8 +976,6 @@ def test_fish_prompt_worktree_shows_indicator():
             source {FISH_PROMPT}
             set -gx COLUMNS 120
             cd {wt}
-            fish_prompt >/dev/null
-            sleep 0.5
             fish_prompt
             """
         ),
@@ -995,7 +983,7 @@ def test_fish_prompt_worktree_shows_indicator():
     )
     assert result.returncode == 0, result.stderr
     rendered = strip_ansi(result.stdout.strip())
-    assert "⊕" in rendered, f"worktree indicator ⊕ not found: {rendered}"
+    assert "⊕" in rendered, f"first prompt in worktree must show ⊕: {rendered!r}"
 
 
 TESTS = [
