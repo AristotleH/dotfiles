@@ -3,5 +3,4 @@
 05-editor-setup.ps1
 40-eza.ps1
 50-zoxide.ps1
-70-tmux.ps1
 80-prompt.ps1

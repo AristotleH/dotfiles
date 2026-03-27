@@ -28,6 +28,7 @@ font-family = Berkeley Mono
 # Clipboard safety and polish
 clipboard-trim-trailing-spaces = true
 clipboard-paste-protection = true
+confirm-close-surface = false
 
 # Quick terminal behavior
 quick-terminal-position = top
