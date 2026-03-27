@@ -604,6 +604,24 @@ def test_fish_prompt_git_refresh_is_async():
         return
 
     repo = make_repo()
+    # Warm the cache with normal git first so subsequent renders skip the
+    # synchronous rebuild and use the async path.
+    warm = run_shell(
+        ["fish", "-c"],
+        textwrap.dedent(
+            f"""
+            source {FISH_PROMPT}
+            set -gx COLUMNS 120
+            cd {repo}
+            fish_prompt >/dev/null
+            sleep 0.5
+            fish_prompt >/dev/null
+            """
+        ),
+        timeout=15,
+    )
+    assert warm.returncode == 0, warm.stderr
+
     slow_git_dir = make_slow_git_dir()
     prompt_path = os.pathsep.join([str(slow_git_dir), os.environ.get("PATH", "")])
     start = time.perf_counter()
@@ -629,6 +647,24 @@ def test_bash_prompt_git_refresh_is_async():
         return
 
     repo = make_repo()
+    # Warm the cache with normal git first so subsequent renders skip the
+    # synchronous rebuild and use the async path.
+    warm = run_shell(
+        ["bash", "--noprofile", "--norc", "-ic"],
+        textwrap.dedent(
+            f"""
+            source "{BASH_PROMPT}"
+            COLUMNS=120
+            cd "{repo}"
+            __dot_prompt_precmd
+            sleep 0.5
+            __dot_prompt_precmd
+            """
+        ),
+        timeout=15,
+    )
+    assert warm.returncode == 0, warm.stderr
+
     slow_git_dir = make_slow_git_dir()
     prompt_path = os.pathsep.join([str(slow_git_dir), os.environ.get("PATH", "")])
     result = run_shell(
@@ -826,6 +862,7 @@ def test_bash_prompt_eventually_renders_git_info():
 
 
 def test_fish_prompt_shows_git_info_in_worktree():
+    """First render inside a linked worktree must show the branch name immediately."""
     if not shell_available("fish") or not FISH_PROMPT.exists() or not shutil.which("git"):
         return
 
@@ -837,19 +874,18 @@ def test_fish_prompt_shows_git_info_in_worktree():
             source {FISH_PROMPT}
             set -gx COLUMNS 120
             cd {worktree}
-            fish_prompt >/dev/null
-            sleep 0.5
             fish_prompt
             """
         ),
-        timeout=20,
+        timeout=15,
     )
     assert result.returncode == 0, result.stderr
     rendered = strip_ansi(result.stdout.strip())
-    assert "wt-branch" in rendered, f"expected branch in prompt, got: {rendered!r}"
+    assert "wt-branch" in rendered, f"expected branch in first render, got: {rendered!r}"
 
 
 def test_bash_prompt_shows_git_info_in_worktree():
+    """First render inside a linked worktree must show the branch name immediately."""
     if not shell_available("bash") or not BASH_PROMPT.exists() or not shutil.which("git"):
         return
 
@@ -862,27 +898,18 @@ def test_bash_prompt_shows_git_info_in_worktree():
             COLUMNS=120
             cd "{worktree}"
             __dot_prompt_precmd
-            for idx in $(seq 20); do
-                sleep 0.2
-                __dot_prompt_precmd
-                case "$PS1" in
-                    *wt-branch*)
-                        printf 'ok\n'
-                        exit 0
-                        ;;
-                esac
-            done
             printf '%s\n' "$PS1"
-            exit 1
             """
         ),
-        timeout=20,
+        timeout=15,
     )
-    rendered = strip_ansi(result.stdout.strip() or result.stderr)
-    assert result.returncode == 0, rendered
+    assert result.returncode == 0, result.stderr
+    rendered = strip_ansi(last_nonempty_line(result.stdout, "bash worktree first render"))
+    assert "wt-branch" in rendered, f"expected branch in first render, got: {rendered!r}"
 
 
 def test_zsh_prompt_shows_git_info_in_worktree():
+    """Zsh prompt (synchronous) must show branch name inside a linked worktree."""
     if not shell_available("zsh") or not ZSH_PROMPT.exists() or not shutil.which("git"):
         return
 
