@@ -176,6 +176,12 @@ _prompt_git() {
     behind=${upstream%$'\t'*}; ahead=${upstream#*$'\t'}
   fi
 
+  # Detect worktree: .git is a file (not a directory) containing a gitdir pointer.
+  local is_worktree=0
+  local toplevel
+  toplevel=$(git rev-parse --show-toplevel 2>/dev/null)
+  [[ -n "$toplevel" && -f "$toplevel/.git" ]] && is_worktree=1
+
   # Calculate display length of status indicators so branch can be sized
   local suffix_len=0
   (( behind     > 0 )) && (( suffix_len += 2 + ${#behind} ))
@@ -186,7 +192,11 @@ _prompt_git() {
   (( dirty      > 0 )) && (( suffix_len += 2 + ${#dirty} ))
   (( untracked  > 0 )) && (( suffix_len += 2 + ${#untracked} ))
 
-  local branch_budget=$(( max_width - suffix_len ))
+  # Reserve 1 char for worktree prefix (⊕).
+  local wt_prefix_len=0
+  (( is_worktree > 0 )) && wt_prefix_len=1
+
+  local branch_budget=$(( max_width - suffix_len - wt_prefix_len ))
   (( branch_budget < 2 )) && return
   (( ${#branch} > branch_budget )) && branch="$(_prompt_truncate_tail "$branch" "$branch_budget")"
 
@@ -194,7 +204,9 @@ _prompt_git() {
   (( conflicted > 0 )) && color=9
   (( staged > 0 || dirty > 0 || untracked > 0 )) && color=11
 
-  printf '%%F{%d}%s%%f' "$color" "$branch"
+  local wt_prefix=''
+  (( is_worktree > 0 )) && wt_prefix='⊕'
+  printf '%%F{%d}%s%s%%f' "$color" "$wt_prefix" "$branch"
   (( behind     > 0 )) && printf ' %%F{10}⇣%d%%f' "$behind"
   (( ahead      > 0 )) && printf ' %%F{10}⇡%d%%f' "$ahead"
   (( stash      > 0 )) && printf ' %%F{10}*%d%%f'  "$stash"

@@ -144,6 +144,12 @@ function _prompt_git_root
             return 0
         end
         if test "$dir" = '/'
+            # Walk-up failed — ask git directly (handles unusual worktree layouts).
+            set -l toplevel (command git rev-parse --show-toplevel 2>/dev/null)
+            if test -n "$toplevel"
+                printf '%s' $toplevel
+                return 0
+            end
             return 1
         end
         set dir (path dirname $dir)
@@ -203,6 +209,10 @@ function _prompt_git_build
         set ahead $a
     end
 
+    # Detect worktree: .git is a file (not a directory) containing a gitdir pointer.
+    set -l is_worktree 0
+    test -f "$repo/.git" && set is_worktree 1
+
     # Calculate display length of status indicators so branch can be sized
     set -l suffix_len 0
     test $behind -gt 0     && set suffix_len (math "$suffix_len + 2 + "(string length -- $behind))
@@ -213,7 +223,11 @@ function _prompt_git_build
     test $dirty -gt 0      && set suffix_len (math "$suffix_len + 2 + "(string length -- $dirty))
     test $untracked -gt 0  && set suffix_len (math "$suffix_len + 2 + "(string length -- $untracked))
 
-    set -l branch_budget (math "$max_width - $suffix_len")
+    # Reserve 1 char for worktree prefix (⊕).
+    set -l wt_prefix_len 0
+    test $is_worktree -gt 0 && set wt_prefix_len 1
+
+    set -l branch_budget (math "$max_width - $suffix_len - $wt_prefix_len")
     test $branch_budget -lt 2; and return
     if test (string length -- $branch) -gt $branch_budget
         set branch (_prompt_truncate_tail $branch $branch_budget)
@@ -226,6 +240,7 @@ function _prompt_git_build
     else
         printf '%s' $_c_brgrn
     end
+    test $is_worktree -gt 0 && printf '⊕'
     printf '%s' $branch
 
     test $behind -gt 0     && printf '%s ⇣%s' $_c_brgrn $behind
@@ -239,7 +254,7 @@ function _prompt_git_build
 end
 
 # Collect raw git data (branch + counts) — budget-independent.
-# Output: tab-separated "branch\tbehind\tahead\tstash\tconflicted\tstaged\tdirty\tuntracked"
+# Output: tab-separated "branch\tbehind\tahead\tstash\tconflicted\tstaged\tdirty\tuntracked\tworktree"
 function _prompt_git_data
     set -l repo $argv[1]
     set -l branch (command git -C "$repo" branch --show-current 2>/dev/null)
@@ -268,8 +283,12 @@ function _prompt_git_data
         set ahead $a
     end
 
-    printf '%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d' \
-        $branch $behind $ahead $stash $conflicted $staged $dirty $untracked
+    # Detect worktree: .git is a file (not a directory) containing a gitdir pointer.
+    set -l is_worktree 0
+    test -f "$repo/.git" && set is_worktree 1
+
+    printf '%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d' \
+        $branch $behind $ahead $stash $conflicted $staged $dirty $untracked $is_worktree
 end
 
 # Render cached git data with the current budget.
@@ -290,6 +309,8 @@ function _prompt_git_render
     set -l staged $fields[6]
     set -l dirty $fields[7]
     set -l untracked $fields[8]
+    set -l is_worktree 0
+    test (count $fields) -ge 9 && set is_worktree $fields[9]
 
     set -l suffix_len 0
     test $behind -gt 0     && set suffix_len (math "$suffix_len + 2 + "(string length -- $behind))
@@ -300,7 +321,11 @@ function _prompt_git_render
     test $dirty -gt 0      && set suffix_len (math "$suffix_len + 2 + "(string length -- $dirty))
     test $untracked -gt 0  && set suffix_len (math "$suffix_len + 2 + "(string length -- $untracked))
 
-    set -l branch_budget (math "$max_width - $suffix_len")
+    # Reserve 1 char for worktree prefix (⊕).
+    set -l wt_prefix_len 0
+    test "$is_worktree" -gt 0 && set wt_prefix_len 1
+
+    set -l branch_budget (math "$max_width - $suffix_len - $wt_prefix_len")
     test $branch_budget -lt 2; and return 1
     if test (string length -- $branch) -gt $branch_budget
         set branch (_prompt_truncate_tail $branch $branch_budget)
@@ -313,6 +338,7 @@ function _prompt_git_render
     else
         printf '%s' $_c_brgrn
     end
+    test "$is_worktree" -gt 0 && printf '⊕'
     printf '%s' $branch
 
     test $behind -gt 0     && printf '%s ⇣%s' $_c_brgrn $behind

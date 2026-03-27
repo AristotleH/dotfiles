@@ -435,7 +435,16 @@ modules:
                     REPLY="$dir"
                     return 0
                 fi
-                [[ "$dir" == / ]] && return 1
+                if [[ "$dir" == / ]]; then
+                    # Walk-up failed — ask git directly (handles unusual worktree layouts).
+                    local toplevel
+                    toplevel="$(git rev-parse --show-toplevel 2>/dev/null)"
+                    if [[ -n "$toplevel" ]]; then
+                        REPLY="$toplevel"
+                        return 0
+                    fi
+                    return 1
+                fi
                 dir="${dir%/*}"
                 [[ -n "$dir" ]] || dir='/'
             done
@@ -466,7 +475,7 @@ modules:
         }
 
         # Collect raw git data (branch + counts) — budget-independent.
-        # Output: tab-separated "branch\tbehind\tahead\tstash\tconflicted\tstaged\tdirty\tuntracked"
+        # Output: tab-separated "branch\tbehind\tahead\tstash\tconflicted\tstaged\tdirty\tuntracked\tworktree"
         __dot_prompt_git_data() {
             local repo="$1"
             local branch
@@ -497,8 +506,12 @@ modules:
                 ahead="${upstream##*$'	'}"
             fi
 
-            printf '%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d' \
-                "$branch" "$behind" "$ahead" "$stash" "$conflicted" "$staged" "$dirty" "$untracked"
+            # Detect worktree: .git is a file (not a directory) containing a gitdir pointer.
+            local is_worktree=0
+            [[ -f "$repo/.git" ]] && is_worktree=1
+
+            printf '%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d' \
+                "$branch" "$behind" "$ahead" "$stash" "$conflicted" "$staged" "$dirty" "$untracked" "$is_worktree"
         }
 
         # Render cached git data with the current budget.
@@ -508,9 +521,10 @@ modules:
             [[ -z "$data" ]] && return 1
             (( max_width < 4 )) && return 1
 
-            local branch behind ahead stash conflicted staged dirty untracked
-            IFS=$'\t' read -r branch behind ahead stash conflicted staged dirty untracked <<< "$data"
+            local branch behind ahead stash conflicted staged dirty untracked is_worktree
+            IFS=$'\t' read -r branch behind ahead stash conflicted staged dirty untracked is_worktree <<< "$data"
             [[ -z "$branch" ]] && return 1
+            is_worktree=${is_worktree:-0}
 
             local suffix_len=0
             (( behind     > 0 )) && (( suffix_len += 2 + ${#behind} ))
@@ -521,7 +535,11 @@ modules:
             (( dirty      > 0 )) && (( suffix_len += 2 + ${#dirty} ))
             (( untracked  > 0 )) && (( suffix_len += 2 + ${#untracked} ))
 
-            local branch_budget=$(( max_width - suffix_len ))
+            # Reserve 1 char for worktree prefix (⊕).
+            local wt_prefix_len=0
+            (( is_worktree > 0 )) && wt_prefix_len=1
+
+            local branch_budget=$(( max_width - suffix_len - wt_prefix_len ))
             (( branch_budget < 2 )) && return 1
             if (( ${#branch} > branch_budget )); then
                 __dot_prompt_truncate_tail "$branch" "$branch_budget"
@@ -532,7 +550,9 @@ modules:
             (( conflicted > 0 )) && color="${__dc_brred}"
             (( staged > 0 || dirty > 0 || untracked > 0 )) && color="${__dc_brylw}"
 
-            printf '%s%s%s' "$color" "$branch" "${__dc_reset}"
+            local wt_prefix=''
+            (( is_worktree > 0 )) && wt_prefix='⊕'
+            printf '%s%s%s%s' "$color" "$wt_prefix" "$branch" "${__dc_reset}"
             (( behind     > 0 )) && printf ' %s⇣%d%s' "${__dc_brgrn}" "$behind"    "${__dc_reset}"
             (( ahead      > 0 )) && printf ' %s⇡%d%s' "${__dc_brgrn}" "$ahead"     "${__dc_reset}"
             (( stash      > 0 )) && printf ' %s*%d%s' "${__dc_brgrn}" "$stash"     "${__dc_reset}"
@@ -802,6 +822,12 @@ modules:
                     $ahead = [int]$parts[1]
                 }
             }
+            # Detect worktree: .git is a file (not a directory) containing a gitdir pointer.
+            $isWorktree = $false
+            $toplevel = git rev-parse --show-toplevel 2>$null
+            if ($toplevel -and (Test-Path "$toplevel/.git" -PathType Leaf)) {
+                $isWorktree = $true
+            }
             # Calculate display length of status indicators so branch can be sized
             $suffixLen = 0
             if ($behind     -gt 0) { $suffixLen += 2 + "$behind".Length }
@@ -811,7 +837,10 @@ modules:
             if ($staged     -gt 0) { $suffixLen += 2 + "$staged".Length }
             if ($dirty      -gt 0) { $suffixLen += 2 + "$dirty".Length }
             if ($untracked  -gt 0) { $suffixLen += 2 + "$untracked".Length }
-            $branchBudget = $MaxWidth - $suffixLen
+            # Reserve 1 char for worktree prefix
+            $wtPrefixLen = 0
+            if ($isWorktree) { $wtPrefixLen = 1 }
+            $branchBudget = $MaxWidth - $suffixLen - $wtPrefixLen
             if ($branchBudget -lt 2) { return "" }
             if ($branch.Length -gt $branchBudget) {
                 $branch = __DotPromptTruncateTail $branch $branchBudget
@@ -819,7 +848,9 @@ modules:
             $color = $global:__dc_brgrn
             if ($conflicted -gt 0) { $color = $global:__dc_brred }
             if ($staged -gt 0 -or $dirty -gt 0 -or $untracked -gt 0) { $color = $global:__dc_brylw }
-            $out = " $color$branch$($global:__dc_reset)"
+            $wtPrefix = ""
+            if ($isWorktree) { $wtPrefix = [char]0x2295 }
+            $out = " $color$wtPrefix$branch$($global:__dc_reset)"
             if ($behind     -gt 0) { $out += " $($global:__dc_brgrn)⇣$behind$($global:__dc_reset)" }
             if ($ahead      -gt 0) { $out += " $($global:__dc_brgrn)⇡$ahead$($global:__dc_reset)" }
             if ($stash      -gt 0) { $out += " $($global:__dc_brgrn)*$stash$($global:__dc_reset)" }
