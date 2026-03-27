@@ -228,23 +228,24 @@ modules:
     tool: zoxide
 
   # Custom module — declarative guards + body
-  - name: tmux
-    prefix: "70"
-    description: Tmux auto-start
-    comment: "Auto-starts tmux on new terminals. Set TMUX_NO_AUTO=1 to disable."
-    guards:
-      - { command_exists: tmux }
-      - is_interactive
-      - is_tty
-      - { env_not_set: TMUX }
-      - { env_not_set: TMUX_NO_AUTO }
-      - { not_env_equals: { var: TERM_PROGRAM, value: vscode } }
-      - { not_env_equals: { var: TERM, value: dumb } }
-    body:
-      posix: |
-        exec tmux new-session -A -s main
-      fish: |
-        exec tmux new-session -A -s main
+  # NOTE: tmux auto-start disabled for now
+  # - name: tmux
+  #   prefix: "70"
+  #   description: Tmux auto-start
+  #   comment: "Auto-starts tmux on new terminals. Set TMUX_NO_AUTO=1 to disable."
+  #   guards:
+  #     - { command_exists: tmux }
+  #     - is_interactive
+  #     - is_tty
+  #     - { env_not_set: TMUX }
+  #     - { env_not_set: TMUX_NO_AUTO }
+  #     - { not_env_equals: { var: TERM_PROGRAM, value: vscode } }
+  #     - { not_env_equals: { var: TERM, value: dumb } }
+  #   body:
+  #     posix: |
+  #       exec tmux new-session -A -s main
+  #     fish: |
+  #       exec tmux new-session -A -s main
 
   - name: prompt
     prefix: "80"
