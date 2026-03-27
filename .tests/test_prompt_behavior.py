@@ -810,6 +810,194 @@ def test_bash_prompt_eventually_renders_git_info():
     assert result.returncode == 0, rendered
 
 
+def make_worktree_repo() -> tuple[Path, Path]:
+    """Create a repo with a linked worktree.  Returns (main_repo, worktree)."""
+    main = Path(tempfile.mkdtemp(prefix="prompt-wt-main-")) / "repo"
+    main.mkdir(parents=True)
+    subprocess.run(["git", "init", str(main)], check=True, capture_output=True, text=True)
+    _git_config_repo(main)
+    (main / "tracked.txt").write_text("hello\n")
+    subprocess.run(["git", "-C", str(main), "add", "tracked.txt"], check=True)
+    subprocess.run(["git", "-C", str(main), "commit", "-m", "init"], check=True, capture_output=True)
+    wt = Path(tempfile.mkdtemp(prefix="prompt-wt-tree-"))
+    shutil.rmtree(wt)  # git worktree add needs a non-existing target
+    subprocess.run(
+        ["git", "-C", str(main), "worktree", "add", str(wt), "-b", "wt-branch"],
+        check=True, capture_output=True, text=True,
+    )
+    return main, wt
+
+
+def test_bash_prompt_worktree_shows_git_info():
+    """Git info renders inside a linked worktree."""
+    if not shell_available("bash") or not BASH_PROMPT.exists() or not shutil.which("git"):
+        return
+
+    _main, wt = make_worktree_repo()
+    env = isolated_prompt_env()
+    result = run_shell(
+        ["bash", "--noprofile", "--norc", "-ic"],
+        textwrap.dedent(
+            f"""
+            export HOME="{env['HOME']}"
+            export XDG_CACHE_HOME="{env['XDG_CACHE_HOME']}"
+            source "{BASH_PROMPT}"
+            COLUMNS=120
+            cd "{wt}"
+            __dot_prompt_precmd
+            for idx in $(seq 20); do
+                sleep 0.2
+                __dot_prompt_precmd
+                case "$PS1" in
+                    *wt-branch*)
+                        printf 'ok\\n'
+                        exit 0
+                        ;;
+                esac
+            done
+            printf '%s\\n' "$PS1"
+            exit 1
+            """
+        ),
+        timeout=20,
+    )
+    rendered = strip_ansi(result.stdout.strip() or result.stderr)
+    assert result.returncode == 0, f"git info not rendered in worktree: {rendered}"
+
+
+def test_bash_prompt_worktree_shows_indicator():
+    """Worktree prompt includes the ⊕ prefix."""
+    if not shell_available("bash") or not BASH_PROMPT.exists() or not shutil.which("git"):
+        return
+
+    _main, wt = make_worktree_repo()
+    env = isolated_prompt_env()
+    cache, head_cache = prompt_cache_paths(wt, env, "bash")
+    result = run_shell(
+        ["bash", "--noprofile", "--norc", "-ic"],
+        textwrap.dedent(
+            f"""
+            export HOME="{env['HOME']}"
+            export XDG_CACHE_HOME="{env['XDG_CACHE_HOME']}"
+            source "{BASH_PROMPT}"
+            COLUMNS=120
+            cd "{wt}"
+            __dot_prompt_precmd
+            for idx in $(seq 20); do
+                sleep 0.2
+                __dot_prompt_precmd
+                case "$PS1" in
+                    *⊕*)
+                        printf 'ok\\n'
+                        exit 0
+                        ;;
+                esac
+            done
+            printf '%s\\n' "$PS1"
+            exit 1
+            """
+        ),
+        timeout=20,
+    )
+    rendered = strip_ansi(result.stdout.strip() or result.stderr)
+    assert result.returncode == 0, f"worktree indicator ⊕ not found in prompt: {rendered}"
+
+
+def test_bash_prompt_non_worktree_no_indicator():
+    """Regular repo prompt does NOT include the ⊕ prefix."""
+    if not shell_available("bash") or not BASH_PROMPT.exists() or not shutil.which("git"):
+        return
+
+    repo = make_repo()
+    env = isolated_prompt_env()
+    result = run_shell(
+        ["bash", "--noprofile", "--norc", "-ic"],
+        textwrap.dedent(
+            f"""
+            export HOME="{env['HOME']}"
+            export XDG_CACHE_HOME="{env['XDG_CACHE_HOME']}"
+            source "{BASH_PROMPT}"
+            COLUMNS=120
+            cd "{repo}"
+            __dot_prompt_precmd
+            for idx in $(seq 20); do
+                sleep 0.2
+                __dot_prompt_precmd
+                case "$PS1" in
+                    *main*|*master*)
+                        case "$PS1" in
+                            *⊕*)
+                                printf 'unexpected-indicator\\n'
+                                exit 1
+                                ;;
+                            *)
+                                printf 'ok\\n'
+                                exit 0
+                                ;;
+                        esac
+                        ;;
+                esac
+            done
+            printf '%s\\n' "$PS1"
+            exit 1
+            """
+        ),
+        timeout=20,
+    )
+    rendered = strip_ansi(result.stdout.strip() or result.stderr)
+    assert result.returncode == 0, f"regular repo should not have ⊕: {rendered}"
+
+
+def test_fish_prompt_worktree_shows_git_info():
+    """Git info renders inside a linked worktree (Fish)."""
+    if not shell_available("fish") or not FISH_PROMPT.exists() or not shutil.which("git"):
+        return
+
+    _main, wt = make_worktree_repo()
+    result = run_shell(
+        ["fish", "-c"],
+        textwrap.dedent(
+            f"""
+            source {FISH_PROMPT}
+            set -gx COLUMNS 120
+            cd {wt}
+            fish_prompt >/dev/null
+            sleep 0.5
+            fish_prompt
+            """
+        ),
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stderr
+    rendered = strip_ansi(result.stdout.strip())
+    assert "wt-branch" in rendered, f"worktree branch not shown: {rendered}"
+
+
+def test_fish_prompt_worktree_shows_indicator():
+    """Worktree prompt includes the ⊕ prefix (Fish)."""
+    if not shell_available("fish") or not FISH_PROMPT.exists() or not shutil.which("git"):
+        return
+
+    _main, wt = make_worktree_repo()
+    result = run_shell(
+        ["fish", "-c"],
+        textwrap.dedent(
+            f"""
+            source {FISH_PROMPT}
+            set -gx COLUMNS 120
+            cd {wt}
+            fish_prompt >/dev/null
+            sleep 0.5
+            fish_prompt
+            """
+        ),
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stderr
+    rendered = strip_ansi(result.stdout.strip())
+    assert "⊕" in rendered, f"worktree indicator ⊕ not found: {rendered}"
+
+
 TESTS = [
     test_fish_prompt_truncates_paths,
     test_bash_prompt_truncates_paths,
@@ -831,6 +1019,11 @@ TESTS = [
     test_bash_prompt_git_refresh_is_async,
     test_fish_prompt_uses_cached_git_segment_without_sync_rebuild,
     test_bash_prompt_uses_cached_git_segment_without_sync_rebuild,
+    test_bash_prompt_worktree_shows_git_info,
+    test_bash_prompt_worktree_shows_indicator,
+    test_bash_prompt_non_worktree_no_indicator,
+    test_fish_prompt_worktree_shows_git_info,
+    test_fish_prompt_worktree_shows_indicator,
 ]
 
 
