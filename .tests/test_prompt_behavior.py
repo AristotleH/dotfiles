@@ -594,7 +594,6 @@ def test_fish_prompt_git_refresh_is_async():
     prompt_path = os.pathsep.join([str(slow_git_dir), os.environ.get("PATH", "")])
     # First prompt does a sync fetch (populates cache).
     # Second prompt should be fast — cache hit, async refresh in background.
-    start = time.perf_counter()
     result = run_shell(
         ["env", f"PATH={prompt_path}", "fish", "-c"],
         textwrap.dedent(
@@ -603,17 +602,17 @@ def test_fish_prompt_git_refresh_is_async():
             set -gx COLUMNS 120
             cd {repo}
             fish_prompt >/dev/null
-            sleep 0.3
+            set -l t0 (date +%s%N)
             fish_prompt >/dev/null
+            set -l t1 (date +%s%N)
+            math "($t1 - $t0) / 1000000000.0"
             """
         ),
         timeout=20,
     )
-    elapsed = time.perf_counter() - start
     assert result.returncode == 0, result.stderr
-    # Total includes sync first prompt + 0.3s sleep + async second prompt.
-    # Second prompt (cache hit) should be fast; budget is generous for the whole run.
-    assert elapsed < 2.0, elapsed
+    elapsed = float(last_nonempty_line(result.stdout, "fish async timing"))
+    assert elapsed < 0.18, elapsed
 
 
 def test_bash_prompt_git_refresh_is_async():
