@@ -172,6 +172,21 @@ def make_dirty_branch_repo(prefix: str, branch: str) -> Path:
     return repo
 
 
+def make_worktree(prefix: str, branch: str) -> tuple[Path, Path]:
+    """Create a repo and a linked git worktree on a new branch.
+
+    Returns (main_repo, worktree_path).
+    """
+    repo = make_repo()
+    worktree = Path(tempfile.mkdtemp(prefix=prefix)) / "worktree"
+    subprocess.run(
+        ["git", "-C", str(repo), "worktree", "add", "-b", branch, str(worktree)],
+        check=True,
+        capture_output=True,
+    )
+    return repo, worktree
+
+
 def test_fish_prompt_truncates_paths():
     if not shell_available("fish") or not FISH_PROMPT.exists():
         return
@@ -810,6 +825,83 @@ def test_bash_prompt_eventually_renders_git_info():
     assert result.returncode == 0, rendered
 
 
+def test_fish_prompt_shows_git_info_in_worktree():
+    if not shell_available("fish") or not FISH_PROMPT.exists() or not shutil.which("git"):
+        return
+
+    _repo, worktree = make_worktree("fish-worktree-", "wt-branch")
+    result = run_shell(
+        ["fish", "-c"],
+        textwrap.dedent(
+            f"""
+            source {FISH_PROMPT}
+            set -gx COLUMNS 120
+            cd {worktree}
+            fish_prompt >/dev/null
+            sleep 0.5
+            fish_prompt
+            """
+        ),
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stderr
+    rendered = strip_ansi(result.stdout.strip())
+    assert "wt-branch" in rendered, f"expected branch in prompt, got: {rendered!r}"
+
+
+def test_bash_prompt_shows_git_info_in_worktree():
+    if not shell_available("bash") or not BASH_PROMPT.exists() or not shutil.which("git"):
+        return
+
+    _repo, worktree = make_worktree("bash-worktree-", "wt-branch")
+    result = run_shell(
+        ["bash", "--noprofile", "--norc", "-ic"],
+        textwrap.dedent(
+            f"""
+            source "{BASH_PROMPT}"
+            COLUMNS=120
+            cd "{worktree}"
+            __dot_prompt_precmd
+            for idx in $(seq 20); do
+                sleep 0.2
+                __dot_prompt_precmd
+                case "$PS1" in
+                    *wt-branch*)
+                        printf 'ok\n'
+                        exit 0
+                        ;;
+                esac
+            done
+            printf '%s\n' "$PS1"
+            exit 1
+            """
+        ),
+        timeout=20,
+    )
+    rendered = strip_ansi(result.stdout.strip() or result.stderr)
+    assert result.returncode == 0, rendered
+
+
+def test_zsh_prompt_shows_git_info_in_worktree():
+    if not shell_available("zsh") or not ZSH_PROMPT.exists() or not shutil.which("git"):
+        return
+
+    _repo, worktree = make_worktree("zsh-worktree-", "wt-branch")
+    script = textwrap.dedent(
+        f"""
+        source {ZSH_PROMPT}
+        COLUMNS=120
+        cd {worktree}
+        _prompt_build 0
+        printf '%s\n' "$PROMPT"
+        """
+    )
+    result = run_shell(["zsh", "-c"], script)
+    assert result.returncode == 0, result.stderr
+    rendered = strip_ansi(result.stdout.strip())
+    assert "wt-branch" in rendered, f"expected branch in prompt, got: {rendered!r}"
+
+
 TESTS = [
     test_fish_prompt_truncates_paths,
     test_bash_prompt_truncates_paths,
@@ -831,6 +923,9 @@ TESTS = [
     test_bash_prompt_git_refresh_is_async,
     test_fish_prompt_uses_cached_git_segment_without_sync_rebuild,
     test_bash_prompt_uses_cached_git_segment_without_sync_rebuild,
+    test_fish_prompt_shows_git_info_in_worktree,
+    test_bash_prompt_shows_git_info_in_worktree,
+    test_zsh_prompt_shows_git_info_in_worktree,
 ]
 
 
