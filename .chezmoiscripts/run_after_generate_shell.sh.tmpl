@@ -59,4 +59,16 @@ if [ -d "$EXTRA_DIR" ]; then
     set -- "$@" "$EXTRA_DIR"
 fi
 
-"$PYTHON3" "$GENERATOR" --quiet --target "{{ .chezmoi.homeDir }}/.config" "$@"
+# Remove stale generated files from previous generator versions that lacked
+# cleanup support (one-time migration for files removed from shell.yaml).
+CONFIG_DIR="{{ .chezmoi.homeDir }}/.config"
+for f in \
+    "$CONFIG_DIR/fish/conf.d/70-tmux.fish" \
+    "$CONFIG_DIR/zsh/.zshrc.d/70-tmux.zsh" \
+    "$CONFIG_DIR/bash/bashrc.d/70-tmux.bash" \
+    "$CONFIG_DIR/powershell/conf.d/70-tmux.ps1"
+do
+    [ -f "$f" ] && rm "$f"
+done
+
+"$PYTHON3" "$GENERATOR" --quiet --target "$CONFIG_DIR" "$@"

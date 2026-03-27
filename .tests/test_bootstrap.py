@@ -220,8 +220,8 @@ def test_mise_config():
 
 
 def test_ghostty_config():
-    assert (CONFIG_DIR / "ghostty" / "config").is_file(), \
-        "ghostty/config not found"
+    assert (CONFIG_DIR / "ghostty" / "config.ghostty").is_file(), \
+        "ghostty/config.ghostty not found"
 
 
 def test_nvim_config():
