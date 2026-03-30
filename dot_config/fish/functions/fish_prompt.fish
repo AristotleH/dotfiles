@@ -160,21 +160,34 @@ function _prompt_git_cache_key
     printf '%s.fish' (string replace -ra '[^A-Za-z0-9_.-]' '_' -- $argv[1])
 end
 
-# Return the path to the HEAD file for a repo, handling worktrees where .git is
-# a file (e.g. "gitdir: /path/to/.git/worktrees/name") rather than a directory.
-function _prompt_git_head_file
+
+# Return a fingerprint of the current HEAD that changes on both
+# branch switches and new commits.  Pure filesystem reads — no git
+# subprocess — so the prompt stays fast even with a slow remote.
+function _prompt_git_head_stamp
     set -l repo $argv[1]
     set -l dot_git "$repo/.git"
+    set -l git_dir
     if test -f "$dot_git"
-        set -l gitdir (string trim -- (string replace -r '^gitdir: *' '' -- (cat "$dot_git" 2>/dev/null)))
-        # Resolve relative gitdir paths (e.g. submodules: ../.git/modules/name)
-        # against the repo root, not $PWD.
-        if not string match -q '/*' -- $gitdir
-            set gitdir (path normalize "$repo/$gitdir")
+        set git_dir (string trim -- (string replace -r '^gitdir: *' '' -- (cat "$dot_git" 2>/dev/null)))
+        if not string match -q '/*' -- $git_dir
+            set git_dir (path normalize "$repo/$git_dir")
         end
-        printf '%s/HEAD' $gitdir
     else
-        printf '%s/.git/HEAD' $repo
+        set git_dir $dot_git
+    end
+    set -l head_content (cat "$git_dir/HEAD" 2>/dev/null)
+    or begin; echo ''; return; end
+    if string match -q 'ref: *' -- $head_content
+        set -l ref (string replace -r '^ref: ' '' -- $head_content)
+        set -l sha (cat "$git_dir/$ref" 2>/dev/null)
+        if test -z "$sha"; and test -f "$git_dir/packed-refs"
+            set sha (string match -r "^([0-9a-f]+) $ref\$" < "$git_dir/packed-refs")
+            and set sha $sha[2]
+        end
+        printf '%s %s' $head_content $sha
+    else
+        printf '%s' $head_content
     end
 end
 
@@ -370,10 +383,10 @@ function _prompt_git_refresh_async
     set -l head_q (string escape -- $head_cache)
     printf '%s\n' \
         (functions _prompt_git_data) \
-        (functions _prompt_git_head_file) \
+        (functions _prompt_git_head_stamp) \
         "_prompt_git_data $repo_q > $cache_q.tmp" \
         "and mv $cache_q.tmp $cache_q" \
-        "cat (_prompt_git_head_file $repo_q) > $head_q 2>/dev/null" \
+        "_prompt_git_head_stamp $repo_q > $head_q" \
         "rmdir $lock_q" \
         "rm -f (status filename)" \
         > $script
@@ -390,7 +403,7 @@ function _prompt_git
     set -l key (_prompt_git_cache_key $repo)
     set -l cache "$__dot_prompt_cache_dir/$key.git"
     set -l head_cache "$__dot_prompt_cache_dir/$key.head"
-    set -l head_now (cat (_prompt_git_head_file $repo) 2>/dev/null)
+    set -l head_now (_prompt_git_head_stamp $repo)
 
     set -l did_sync 0
     mkdir -p $__dot_prompt_cache_dir 2>/dev/null
@@ -404,7 +417,8 @@ function _prompt_git
         end
         set did_sync 1
     else if test -n "$head_now"
-        # Cache exists; rebuild synchronously when HEAD changed (branch switch).
+        # Cache exists; rebuild synchronously when HEAD changed
+        # (branch switch or new commit).
         set -l head_prev (cat "$head_cache" 2>/dev/null)
         if test "$head_now" != "$head_prev"
             _prompt_git_data $repo > "$cache.sync"
