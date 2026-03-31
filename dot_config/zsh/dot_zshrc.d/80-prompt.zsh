@@ -192,20 +192,29 @@ _prompt_git() {
   (( dirty      > 0 )) && (( suffix_len += 2 + ${#dirty} ))
   (( untracked  > 0 )) && (( suffix_len += 2 + ${#untracked} ))
 
-  # Reserve 1 char for worktree prefix (⊕).
+  # Reserve space for worktree prefix (⊕ or ⊕ + space).
   local wt_prefix_len=0
-  (( is_worktree > 0 )) && wt_prefix_len=1
+  (( is_worktree > 0 )) && wt_prefix_len=2
 
   local branch_budget=$(( max_width - suffix_len - wt_prefix_len ))
   (( branch_budget < 2 )) && return
-  (( ${#branch} > branch_budget )) && branch="$(_prompt_truncate_tail "$branch" "$branch_budget")"
+  local wt_prefix=''
+  if (( is_worktree > 0 )); then
+    if (( ${#branch} > branch_budget )); then
+      (( branch_budget += 1 ))
+      branch="$(_prompt_truncate_tail "$branch" "$branch_budget")"
+      wt_prefix='⊕'
+    else
+      wt_prefix='⊕ '
+    fi
+  elif (( ${#branch} > branch_budget )); then
+    branch="$(_prompt_truncate_tail "$branch" "$branch_budget")"
+  fi
 
   local color=10
   (( conflicted > 0 )) && color=9
   (( staged > 0 || dirty > 0 || untracked > 0 )) && color=11
 
-  local wt_prefix=''
-  (( is_worktree > 0 )) && wt_prefix='⊕'
   printf '%%F{%d}%s%s%%f' "$color" "$wt_prefix" "$branch"
   (( behind     > 0 )) && printf ' %%F{10}⇣%d%%f' "$behind"
   (( ahead      > 0 )) && printf ' %%F{10}⇡%d%%f' "$ahead"

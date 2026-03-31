@@ -236,13 +236,22 @@ function _prompt_git_build
     test $dirty -gt 0      && set suffix_len (math "$suffix_len + 2 + "(string length -- $dirty))
     test $untracked -gt 0  && set suffix_len (math "$suffix_len + 2 + "(string length -- $untracked))
 
-    # Reserve 1 char for worktree prefix (⊕).
+    # Reserve space for worktree prefix (⊕ or ⊕ + space).
     set -l wt_prefix_len 0
-    test $is_worktree -gt 0 && set wt_prefix_len 1
+    test $is_worktree -gt 0 && set wt_prefix_len 2
 
     set -l branch_budget (math "$max_width - $suffix_len - $wt_prefix_len")
     test $branch_budget -lt 2; and return
-    if test (string length -- $branch) -gt $branch_budget
+    set -l wt_prefix ''
+    if test $is_worktree -gt 0
+        if test (string length -- $branch) -gt $branch_budget
+            set branch_budget (math "$branch_budget + 1")
+            set branch (_prompt_truncate_tail $branch $branch_budget)
+            set wt_prefix '⊕'
+        else
+            set wt_prefix '⊕ '
+        end
+    else if test (string length -- $branch) -gt $branch_budget
         set branch (_prompt_truncate_tail $branch $branch_budget)
     end
 
@@ -253,8 +262,7 @@ function _prompt_git_build
     else
         printf '%s' $_c_brgrn
     end
-    test $is_worktree -gt 0 && printf '⊕'
-    printf '%s' $branch
+    printf '%s%s' $wt_prefix $branch
 
     test $behind -gt 0     && printf '%s ⇣%s' $_c_brgrn $behind
     test $ahead -gt 0      && printf '%s ⇡%s' $_c_brgrn $ahead
@@ -334,13 +342,22 @@ function _prompt_git_render
     test $dirty -gt 0      && set suffix_len (math "$suffix_len + 2 + "(string length -- $dirty))
     test $untracked -gt 0  && set suffix_len (math "$suffix_len + 2 + "(string length -- $untracked))
 
-    # Reserve 1 char for worktree prefix (⊕).
+    # Reserve space for worktree prefix (⊕ or ⊕ + space).
     set -l wt_prefix_len 0
-    test "$is_worktree" -gt 0 && set wt_prefix_len 1
+    test "$is_worktree" -gt 0 && set wt_prefix_len 2
 
     set -l branch_budget (math "$max_width - $suffix_len - $wt_prefix_len")
     test $branch_budget -lt 2; and return 1
-    if test (string length -- $branch) -gt $branch_budget
+    set -l wt_prefix ''
+    if test "$is_worktree" -gt 0
+        if test (string length -- $branch) -gt $branch_budget
+            set branch_budget (math "$branch_budget + 1")
+            set branch (_prompt_truncate_tail $branch $branch_budget)
+            set wt_prefix '⊕'
+        else
+            set wt_prefix '⊕ '
+        end
+    else if test (string length -- $branch) -gt $branch_budget
         set branch (_prompt_truncate_tail $branch $branch_budget)
     end
 
@@ -351,8 +368,7 @@ function _prompt_git_render
     else
         printf '%s' $_c_brgrn
     end
-    test "$is_worktree" -gt 0 && printf '⊕'
-    printf '%s' $branch
+    printf '%s%s' $wt_prefix $branch
 
     test $behind -gt 0     && printf '%s ⇣%s' $_c_brgrn $behind
     test $ahead -gt 0      && printf '%s ⇡%s' $_c_brgrn $ahead
