@@ -1,6 +1,6 @@
 # User-Level Agent Guidelines
 
-## Philosophy
+## Philosophy and Rules
 
 * Create only what you need, and nothing more. Don't be speculative. YAGNI.
 * All code should be pleasantly human-readable. Don't be clever. KISS.
@@ -11,14 +11,12 @@
 * If you're able to verify that you code works, do so before you finish responding. If there's no way to do this, but you can make a durable one, do so.
 * If you've acted twice or more at the same level of abstraction and it still doesn't work, take a step back and try to understand the problem better. Then respond to me with your understanding and pause for feedback from me. Don't waste tokens doing the same kind of thing over and over again.
 * Proactively handle edge cases and improve code quality, when directly relevant.
-
-## Rules
-
-* Lines must be at most 120 characters long. Better if they're at most 80.
+* Thoroughly reason before responding. Read before writing. Don't re-read unless you believe a file has changed.
 * Write comments to explain why, not what. If your code isn't self-documenting, rewrite it.
 * Fix warnings. If you can't fix them, document why.
 * Added code should have tests, if possible. Tests should exercise intended behavior, not implementation.
 * Work on feature branches, never on the trunk.
+* Know what you're doing. Don't guess.
 
 ## Workflow
 
