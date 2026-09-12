@@ -22,6 +22,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_DIR = Path.home() / ".config"
 CONFIG_DIR = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_CONFIG_DIR
 FISH_PROMPT = CONFIG_DIR / "fish" / "functions" / "fish_prompt.fish"
+if not FISH_PROMPT.exists():
+    FISH_PROMPT = REPO_ROOT / "dot_config" / "fish" / "functions" / "fish_prompt.fish"
 BASH_PROMPT = CONFIG_DIR / "bash" / "bashrc.d" / "80-prompt.bash"
 ZSH_PROMPT = CONFIG_DIR / "zsh" / ".zshrc.d" / "80-prompt.zsh"
 PWSH_PROMPT = CONFIG_DIR / "powershell" / "conf.d" / "80-prompt.ps1"
@@ -76,24 +78,21 @@ def isolated_prompt_env() -> dict[str, str]:
     return env
 
 
-def prompt_cache_paths(repo: Path, env: dict[str, str], shell_suffix: str) -> tuple[Path, Path]:
+def prompt_cache_path(repo: Path, env: dict[str, str], shell_suffix: str) -> Path:
     key = re.sub(r"[^A-Za-z0-9_.-]", "_", str(repo))
     cache_dir = Path(env["HOME"]) / ".cache" / "dot_prompt"
-    return cache_dir / f"{key}.{shell_suffix}.git", cache_dir / f"{key}.{shell_suffix}.head"
+    return cache_dir / f"{key}.{shell_suffix}-v2.git"
 
 
-def wait_for_prompt_cache(cache: Path, head_cache: Path, timeout: float = 2.0) -> str:
-    deadline = time.perf_counter() + timeout
-    last_cache = ""
-    while time.perf_counter() < deadline:
+def wait_for_prompt_cache(cache: Path, timeout: float = 2.0) -> str:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
         if cache.exists():
-            last_cache = cache.read_text()
-        if last_cache and head_cache.exists():
-            return last_cache
+            snapshot = cache.read_text().splitlines()
+            if len(snapshot) == 2:
+                return snapshot[1]
         time.sleep(0.05)
-    raise AssertionError(
-        f"prompt cache did not settle: cache={cache.exists()} head_cache={head_cache.exists()}"
-    )
+    raise AssertionError(f"prompt cache did not settle: {cache}")
 
 
 def make_slow_git_dir() -> Path:
@@ -294,8 +293,8 @@ def test_fish_prompt_preserves_non_prompt_width():
         env=env,
     )
     assert warm.returncode == 0, warm.stderr
-    cache, head_cache = prompt_cache_paths(repo, env, "fish")
-    cache_text = wait_for_prompt_cache(cache, head_cache)
+    cache = prompt_cache_path(repo, env, "fish")
+    cache_text = wait_for_prompt_cache(cache)
     # Cache stores raw data (branch\tcounts); verify branch is present
     assert "prompt-width-testing" in cache_text, cache_text
 
@@ -677,8 +676,8 @@ def test_fish_prompt_uses_cached_git_segment_without_sync_rebuild():
         env=warm_env,
     )
     assert warm.returncode == 0, warm.stderr
-    cache, head_cache = prompt_cache_paths(repo, warm_env, "fish")
-    cache_text = wait_for_prompt_cache(cache, head_cache)
+    cache = prompt_cache_path(repo, warm_env, "fish")
+    cache_text = wait_for_prompt_cache(cache)
     # Cache stores raw data (branch\tcounts); verify branch is present
     assert "prompt-width-testing" in cache_text, cache_text
 
@@ -797,7 +796,7 @@ def test_bash_prompt_eventually_renders_git_info():
         textwrap.dedent(
             f"""
             source "{BASH_PROMPT}"
-            COLUMNS=120
+            COLUMNS=240
             cd "{repo}"
             __dot_prompt_precmd
             for idx in $(seq 20); do
@@ -852,7 +851,7 @@ def test_bash_prompt_worktree_shows_git_info():
             export HOME="{env['HOME']}"
             export XDG_CACHE_HOME="{env['XDG_CACHE_HOME']}"
             source "{BASH_PROMPT}"
-            COLUMNS=120
+            COLUMNS=240
             cd "{wt}"
             __dot_prompt_precmd
             printf '%s\\n' "$PS1"
@@ -909,7 +908,7 @@ def test_bash_prompt_non_worktree_no_indicator():
             export HOME="{env['HOME']}"
             export XDG_CACHE_HOME="{env['XDG_CACHE_HOME']}"
             source "{BASH_PROMPT}"
-            COLUMNS=120
+            COLUMNS=240
             cd "{repo}"
             __dot_prompt_precmd
             for idx in $(seq 20); do
@@ -986,7 +985,94 @@ def test_fish_prompt_worktree_shows_indicator():
     assert "⊕" in rendered, f"first prompt in worktree must show ⊕: {rendered!r}"
 
 
+def run_git_refresh_check(repo: Path, bash: str, fish: str) -> None:
+    """Exercise each available cached prompt against a real repository."""
+    for shell, prompt, script in [("bash", BASH_PROMPT, bash), ("fish", FISH_PROMPT, fish)]:
+        if not shell_available(shell) or not prompt.exists():
+            print(f"SKIP {shell} refresh check: shell or prompt unavailable")
+            continue
+        env = isolated_prompt_env()
+        args = [shell, "--noprofile", "--norc", "-ic"] if shell == "bash" else [shell, "-c"]
+        result = subprocess.run(
+            args + [f'source "{prompt}"\ncd "{repo}"\n' + textwrap.dedent(script)],
+            env=env, capture_output=True, text=True, timeout=15,
+        )
+        assert result.returncode == 0, f"{shell}: {result.stdout} {result.stderr}"
+
+
+def test_prompt_head_tracks_worktree_commits_and_packed_refs():
+    main, wt = make_worktree_repo()
+    subprocess.run(["git", "-C", str(main), "pack-refs", "--all"], check=True)
+    # Relative gitdir pointers also occur in practice.
+    pointer = wt / ".git"
+    git_dir = Path(pointer.read_text().strip().removeprefix("gitdir: "))
+    pointer.write_text("gitdir: " + os.path.relpath(git_dir, wt) + "\n")
+    for repo in (main, wt):
+        run_git_refresh_check(repo, r'''
+            __dot_prompt_git_head_stamp "$PWD"
+            before="$REPLY"
+            [[ "$before" == *"$(git rev-parse HEAD)" ]] || exit 1
+            git -c core.hooksPath=/dev/null commit --allow-empty -qm refresh
+            __dot_prompt_git_head_stamp "$PWD"
+            [[ "$REPLY" != "$before" && "$REPLY" == *"$(git rev-parse HEAD)" ]]
+        ''', r'''
+            set before (_prompt_git_head_stamp "$PWD")
+            string match -q "*"(git rev-parse HEAD) -- "$before"; or exit 1
+            git -c core.hooksPath=/dev/null commit --allow-empty -qm refresh
+            set after (_prompt_git_head_stamp "$PWD")
+            test "$before" != "$after"; or exit 1
+            string match -q "*"(git rev-parse HEAD) -- "$after"
+        ''')
+
+
+def test_prompt_branch_switch_updates_next_render():
+    main, wt = make_worktree_repo()
+    for repo in (main, wt):
+        run_git_refresh_check(repo, r'''
+            COLUMNS=240
+            __dot_prompt_precmd
+            git switch -qC bash-next
+            __dot_prompt_precmd
+            [[ "$PS1" == *bash-next* ]] || exit 1
+            git switch -q --detach
+            __dot_prompt_precmd
+            [[ "$PS1" == *"@$(git rev-parse --short HEAD)"* ]]
+        ''', r'''
+            _prompt_git 120 >/dev/null
+            git switch -qC fish-next
+            set rendered (_prompt_git 120)
+            string match -q '*fish-next*' -- "$rendered"; or exit 1
+            git switch -q --detach
+            set rendered (_prompt_git 120)
+            string match -q "*@"(git rev-parse --short HEAD)"*" -- "$rendered"
+        ''')
+
+
+def test_prompt_rejects_refresh_spanning_checkout():
+    _, wt = make_worktree_repo()
+    run_git_refresh_check(wt, r'''
+        __dot_prompt_git_data() {
+            printf 'old-branch\t0\t0\t0\t0\t0\t0\t0\t1'
+            git switch -qc bash-racing
+        }
+        snapshot="$(__dot_prompt_git_snapshot "$PWD")"
+        result=$?
+        [[ $result != 0 && -z "$snapshot" ]]
+    ''', r'''
+        function _prompt_git_data
+            printf 'old-branch\t0\t0\t0\t0\t0\t0\t0\t1'
+            git switch -qc fish-racing
+        end
+        set snapshot (_prompt_git_snapshot "$PWD")
+        set result $status
+        test $result -ne 0; and test -z "$snapshot"
+    ''')
+
+
 TESTS = [
+    test_prompt_head_tracks_worktree_commits_and_packed_refs,
+    test_prompt_branch_switch_updates_next_render,
+    test_prompt_rejects_refresh_spanning_checkout,
     test_fish_prompt_truncates_paths,
     test_bash_prompt_truncates_paths,
     test_zsh_prompt_truncates_paths,

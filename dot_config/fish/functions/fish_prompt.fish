@@ -157,7 +157,7 @@ function _prompt_git_root
 end
 
 function _prompt_git_cache_key
-    printf '%s.fish' (string replace -ra '[^A-Za-z0-9_.-]' '_' -- $argv[1])
+    printf '%s.fish-v2' (string replace -ra '[^A-Za-z0-9_.-]' '_' -- $argv[1])
 end
 
 
@@ -180,12 +180,18 @@ function _prompt_git_head_stamp
     or begin; echo ''; return; end
     if string match -q 'ref: *' -- $head_content
         set -l ref (string replace -r '^ref: ' '' -- $head_content)
-        set -l sha (cat "$git_dir/$ref" 2>/dev/null)
-        if test -z "$sha"; and test -f "$git_dir/packed-refs"
-            set sha (string match -r "^([0-9a-f]+) $ref\$" < "$git_dir/packed-refs")
-            and set sha $sha[2]
+        set -l common_dir $git_dir
+        if test -f "$git_dir/commondir"
+            set common_dir (cat "$git_dir/commondir")
+            if not string match -q '/*' -- "$common_dir"
+                set common_dir "$git_dir/$common_dir"
+            end
         end
-        printf '%s %s' $head_content $sha
+        set -l sha (cat "$common_dir/$ref" 2>/dev/null)
+        if test -z "$sha"; and test -f "$common_dir/packed-refs"
+            set sha (awk -v ref="$ref" '$2 == ref {print $1; exit}' "$common_dir/packed-refs")
+        end
+        printf '%s %s' "$head_content" "$sha"
     else
         printf '%s' $head_content
     end
@@ -380,6 +386,19 @@ function _prompt_git_render
     true
 end
 
+# Publish the HEAD stamp and data together so a checkout during a background
+# refresh cannot associate an old branch with a new HEAD.
+function _prompt_git_snapshot
+    set -l repo $argv[1]
+    set -l before (_prompt_git_head_stamp "$repo")
+    test -n "$before"; or return 1
+    set -l data (_prompt_git_data "$repo")
+    or return 1
+    set -l after (_prompt_git_head_stamp "$repo")
+    test "$before" = "$after"; or return 1
+    printf '%s\n%s' "$before" "$data"
+end
+
 function _prompt_git_refresh_async
     set -l repo $argv[1]
     set -l key (_prompt_git_cache_key $repo)
@@ -391,18 +410,17 @@ function _prompt_git_refresh_async
         return
     end
 
-    set -l head_cache "$__dot_prompt_cache_dir/$key.head"
     set -l script "$__dot_prompt_cache_dir/$key.worker.fish"
     set -l repo_q (string escape -- $repo)
     set -l cache_q (string escape -- $cache)
     set -l lock_q (string escape -- $lock)
-    set -l head_q (string escape -- $head_cache)
     printf '%s\n' \
         (functions _prompt_git_data) \
         (functions _prompt_git_head_stamp) \
-        "_prompt_git_data $repo_q > $cache_q.tmp" \
+        (functions _prompt_git_snapshot) \
+        "_prompt_git_snapshot $repo_q > $cache_q.tmp" \
         "and mv $cache_q.tmp $cache_q" \
-        "_prompt_git_head_stamp $repo_q > $head_q" \
+        "rm -f $cache_q.tmp" \
         "rmdir $lock_q" \
         "rm -f (status filename)" \
         > $script
@@ -418,39 +436,27 @@ function _prompt_git
 
     set -l key (_prompt_git_cache_key $repo)
     set -l cache "$__dot_prompt_cache_dir/$key.git"
-    set -l head_cache "$__dot_prompt_cache_dir/$key.head"
     set -l head_now (_prompt_git_head_stamp $repo)
-
-    set -l did_sync 0
+    set -l snapshot
     mkdir -p $__dot_prompt_cache_dir 2>/dev/null
-
-    if not test -f "$cache"
-        # No cache yet — synchronous fetch so the first prompt has git info.
-        _prompt_git_data $repo > "$cache.sync"
-        and mv "$cache.sync" "$cache"
-        if test -n "$head_now"
-            printf '%s' "$head_now" > "$head_cache"
-        end
-        set did_sync 1
-    else if test -n "$head_now"
-        # Cache exists; rebuild synchronously when HEAD changed
-        # (branch switch or new commit).
-        set -l head_prev (cat "$head_cache" 2>/dev/null)
-        if test "$head_now" != "$head_prev"
-            _prompt_git_data $repo > "$cache.sync"
-            and mv "$cache.sync" "$cache"
-            printf '%s' "$head_now" > "$head_cache"
-            set did_sync 1
-        end
+    if test -f "$cache"
+        set snapshot (cat "$cache")
     end
 
-    # Skip async when sync just ran — the data is already fresh.
-    if test $did_sync -eq 0
+    if test (count $snapshot) -ne 2; or test "$snapshot[1]" != "$head_now"
+        # Render the snapshot we collected, not a file an older worker can replace.
+        set snapshot (_prompt_git_snapshot "$repo")
+        if test (count $snapshot) -eq 2
+            set -l tmp (mktemp "$cache.XXXXXX")
+            printf '%s\n%s' "$snapshot[1]" "$snapshot[2]" > "$tmp"
+            and mv "$tmp" "$cache"
+        end
+    else
         _prompt_git_refresh_async $repo
     end
 
-    if test -f "$cache"
-        _prompt_git_render (cat "$cache") $max_width
+    if test (count $snapshot) -eq 2
+        _prompt_git_render "$snapshot[2]" $max_width
     end
 end
 
