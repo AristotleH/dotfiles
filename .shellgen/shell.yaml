@@ -453,7 +453,7 @@ modules:
         __dot_prompt_git_cache_key() {
             local key="$1"
             key="${key//[^[:alnum:]_.-]/_}"
-            REPLY="${key}.bash"
+            REPLY="${key}.bash-v2"
         }
 
         # Return a fingerprint of the current HEAD that changes on both
@@ -471,14 +471,17 @@ modules:
                 git_dir="$dot_git"
             fi
             local head
-            head="$(<"$git_dir/HEAD" 2>/dev/null)" || { REPLY=''; return; }
+            head="$(cat "$git_dir/HEAD" 2>/dev/null)" || { REPLY=''; return; }
             if [[ "$head" == ref:* ]]; then
                 local ref="${head#ref: }"
-                local sha
-                sha="$(<"$git_dir/$ref" 2>/dev/null)" || sha=''
-                if [[ -z "$sha" && -f "$git_dir/packed-refs" ]]; then
-                    sha="$(command grep " ${ref}\$" "$git_dir/packed-refs" 2>/dev/null)"
-                    sha="${sha%% *}"
+                local common_dir="$git_dir" sha
+                if [[ -f "$git_dir/commondir" ]]; then
+                    common_dir="$(cat "$git_dir/commondir")"
+                    [[ "$common_dir" != /* ]] && common_dir="$git_dir/$common_dir"
+                fi
+                sha="$(cat "$common_dir/$ref" 2>/dev/null)" || sha=''
+                if [[ -z "$sha" && -f "$common_dir/packed-refs" ]]; then
+                    sha="$(awk -v ref="$ref" '$2 == ref {print $1; exit}' "$common_dir/packed-refs")"
                 fi
                 REPLY="$head $sha"
             else
@@ -584,9 +587,22 @@ modules:
             return 0
         }
 
+        # Keep the stamp and data in one atomic snapshot. A worker that spans a
+        # checkout must never mark old branch data as belonging to the new HEAD.
+        __dot_prompt_git_snapshot() {
+            local repo="$1" before data
+            __dot_prompt_git_head_stamp "$repo"
+            before="$REPLY"
+            [[ -n "$before" ]] || return 1
+            data="$(__dot_prompt_git_data "$repo")" || return 1
+            __dot_prompt_git_head_stamp "$repo"
+            [[ "$before" == "$REPLY" ]] || return 1
+            printf '%s\n%s' "$before" "$data"
+        }
+
         __dot_prompt_git_refresh_async() {
             local repo="$1"
-            local key cache lock repo_q cache_q lock_q head_q worker
+            local key cache lock repo_q cache_q lock_q worker
             __dot_prompt_git_cache_key "$repo"
             key="$REPLY"
             cache="$__dot_prompt_cache_dir/$key.git"
@@ -597,19 +613,17 @@ modules:
                 return
             fi
 
-            local head_cache="$__dot_prompt_cache_dir/$key.head"
             printf -v repo_q '%q' "$repo"
             printf -v cache_q '%q' "$cache"
             printf -v lock_q '%q' "$lock"
-            printf -v head_q '%q' "$head_cache"
             worker="$(
                 declare -f __dot_prompt_git_data
                 declare -f __dot_prompt_git_head_stamp
+                declare -f __dot_prompt_git_snapshot
                 printf '%s\n' \
                     "tmp=${cache_q}.tmp" \
-                    "__dot_prompt_git_data ${repo_q} > \"\$tmp\" && mv \"\$tmp\" ${cache_q}" \
-                    "__dot_prompt_git_head_stamp ${repo_q}" \
-                    "printf '%s' \"\$REPLY\" > ${head_q}" \
+                    "__dot_prompt_git_snapshot ${repo_q} > \"\$tmp\" && mv \"\$tmp\" ${cache_q}" \
+                    "rm -f \"\$tmp\"" \
                     "rmdir ${lock_q}"
             )"
             (bash --noprofile --norc -c "$worker" >/dev/null 2>&1 &)
@@ -651,44 +665,28 @@ modules:
                 key="$REPLY"
                 cache="$__dot_prompt_cache_dir/$key.git"
 
-                local did_sync=0
-                local head_cache="$__dot_prompt_cache_dir/$key.head"
+                local snapshot='' head_now git_data
                 mkdir -p "$__dot_prompt_cache_dir" 2>/dev/null
+                [[ -f "$cache" ]] && snapshot="$(<"$cache")"
+                __dot_prompt_git_head_stamp "$repo"
+                head_now="$REPLY"
 
-                if [[ ! -f "$cache" ]]; then
-                    # No cache yet — synchronous fetch so the first prompt has git info.
-                    __dot_prompt_git_data "$repo" > "$cache.sync" \
-                        && mv "$cache.sync" "$cache"
-                    __dot_prompt_git_head_stamp "$repo"
-                    [[ -n "$REPLY" ]] && printf '%s' "$REPLY" > "$head_cache"
-                    did_sync=1
-                elif [[ -f "$cache" ]]; then
-                    # Cache exists; rebuild synchronously when HEAD changed
-                    # (branch switch or new commit).
-                    __dot_prompt_git_head_stamp "$repo"
-                    local head_now="$REPLY"
-                    if [[ -n "$head_now" ]]; then
-                        local head_prev
-                        head_prev="$(<"$head_cache" 2>/dev/null)" || head_prev=''
-                        if [[ "$head_now" != "$head_prev" ]]; then
-                            __dot_prompt_git_data "$repo" > "$cache.sync" \
-                                && mv "$cache.sync" "$cache"
-                            printf '%s' "$head_now" > "$head_cache"
-                            did_sync=1
-                        fi
+                if [[ -z "$snapshot" || "${snapshot%%$'\n'*}" != "$head_now" ]]; then
+                    # Branch changes must be visible on this prompt, even while
+                    # an older background refresh is still running.
+                    snapshot="$(__dot_prompt_git_snapshot "$repo")" || snapshot=''
+                    if [[ -n "$snapshot" ]]; then
+                        local tmp
+                        tmp="$(mktemp "$cache.XXXXXX")"
+                        printf '%s' "$snapshot" > "$tmp" && mv "$tmp" "$cache"
                     fi
-                fi
-
-                if (( did_sync == 0 )); then
+                else
                     __dot_prompt_git_refresh_async "$repo"
                 fi
 
-                if [[ -f "$cache" ]]; then
-                    local git_data
-                    git_data="$(<"$cache")"
-                    if [[ -n "$git_data" ]]; then
-                        git_segment=" $(__dot_prompt_git_render "$git_data" "$git_budget")"
-                    fi
+                if [[ -n "$snapshot" ]]; then
+                    git_data="${snapshot#*$'\n'}"
+                    git_segment=" $(__dot_prompt_git_render "$git_data" "$git_budget")"
                 fi
             fi
             PS1="${pwd_segment}${git_segment} ${arrow_color}❯${__dc_reset} "
